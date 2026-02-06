@@ -37,12 +37,6 @@
             <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
 
-        <!-- Scheduler for game ticks -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-scheduler</artifactId>
-        </dependency>
-
         <!-- Arc (CDI) - included by default but explicit for clarity -->
         <dependency>
             <groupId>io.quarkus</groupId>

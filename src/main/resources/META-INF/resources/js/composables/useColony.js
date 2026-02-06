@@ -244,6 +244,30 @@
     const gridWidth = computed(() => config.value ? config.value.gridWidth : 32);
     const gridHeight = computed(() => config.value ? config.value.gridHeight : 32);
 
+    const tickSpeed = ref(5000);
+
+    async function manualTick() {
+      try {
+        await fetch(`${baseUrl}/tick`, { method: 'POST' });
+      } catch (e) {
+        addLog(null, 'Manual tick failed.');
+      }
+    }
+
+    async function setSpeed(intervalMs) {
+      try {
+        const res = await fetch(`${baseUrl}/speed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ intervalMs })
+        });
+        const data = await res.json();
+        tickSpeed.value = data.intervalMs;
+      } catch (e) {
+        addLog(null, 'Speed change failed.');
+      }
+    }
+
     return {
       state,
       buildingsInfo,
@@ -253,11 +277,14 @@
       resourceDeltas,
       resourceHistory,
       revealedTiles,
+      tickSpeed,
       init,
       buildAt,
       resetColony,
       canAfford,
-      revealAround
+      revealAround,
+      manualTick,
+      setSpeed
     };
   }
 

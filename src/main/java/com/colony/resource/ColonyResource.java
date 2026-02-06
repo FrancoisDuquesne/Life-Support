@@ -125,6 +125,26 @@ public class ColonyResource {
         return gameTickService.getTickStream();
     }
 
+    @POST
+    @Path("/tick")
+    public ColonyService.TickResult manualTick() {
+        return gameTickService.manualTick();
+    }
+
+    @POST
+    @Path("/speed")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public SpeedResult setSpeed(SpeedRequest request) {
+        long actual = gameTickService.setSpeed(request.intervalMs());
+        return new SpeedResult(actual);
+    }
+
+    @GET
+    @Path("/speed")
+    public SpeedResult getSpeed() {
+        return new SpeedResult(gameTickService.getIntervalMs());
+    }
+
     @GET
     @Path("/help")
     @Produces(MediaType.TEXT_PLAIN)
@@ -167,4 +187,7 @@ public class ColonyResource {
         int gridHeight,
         List<BuildingInfo> buildings
     ) {}
+
+    public record SpeedRequest(long intervalMs) {}
+    public record SpeedResult(long intervalMs) {}
 }

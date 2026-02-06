@@ -28,11 +28,23 @@ body{
   position:absolute;top:0;left:0;right:280px;z-index:10;
   display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
   padding:10px 16px;border-bottom:1px solid rgba(214,207,196,0.5);
-  background:rgba(255,255,255,0.82);backdrop-filter:blur(12px);
+  background:rgba(0,0,0,0.50);backdrop-filter:blur(12px);
 }
-.header h1{font-size:1rem;color:var(--text-bright);letter-spacing:2px;text-transform:uppercase}
+.header h1{font-size:1rem;color:rgba(255,255,255,0.9);letter-spacing:2px;text-transform:uppercase}
 .header-info{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.tick-counter{color:var(--text-dim);font-size:.8rem}
+.tick-counter{color:rgba(255,255,255,0.55);font-size:.8rem}
+.speed-controls{display:flex;gap:3px;align-items:center}
+.btn-speed{
+  padding:3px 8px;font-size:.65rem;background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.6);
+}
+.btn-speed:hover{background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.85);border-color:rgba(255,255,255,0.25)}
+.btn-speed.active{background:rgba(37,99,235,0.3);border-color:rgba(37,99,235,0.5);color:rgba(255,255,255,0.9)}
+.btn-next{
+  padding:3px 8px;font-size:.65rem;background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.6);margin-left:2px;
+}
+.btn-next:hover{background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.85);border-color:rgba(255,255,255,0.25)}
 .status-badge{
   padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:bold;text-transform:uppercase;
 }
@@ -46,8 +58,8 @@ body{
 .btn:hover{background:#ece7dd;border-color:#b8ad9e}
 .btn:active{transform:scale(.97)}
 .btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
-.btn-danger{border-color:rgba(239,68,68,.3);color:var(--danger)}
-.btn-danger:hover{background:rgba(239,68,68,.1)}
+.btn-danger{border-color:rgba(239,68,68,.4);color:#f87171;background:rgba(239,68,68,0.1)}
+.btn-danger:hover{background:rgba(239,68,68,.2)}
 .btn-cancel{margin-left:8px;border-color:rgba(239,68,68,.3);color:var(--danger)}
 
 /* RESOURCE STRIP */

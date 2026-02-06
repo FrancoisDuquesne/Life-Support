@@ -83,7 +83,8 @@
     },
     template: `
       <div class="app-layout">
-        <HeaderBar :state="colony.state.value" :on-reset="colony.resetColony" />
+        <HeaderBar :state="colony.state.value" :on-reset="colony.resetColony"
+          :tick-speed="colony.tickSpeed.value" :on-set-speed="colony.setSpeed" :on-manual-tick="colony.manualTick" />
 
         <div class="resource-strip-wrapper">
           <ResourcePanel :state="colony.state.value" :deltas="colony.resourceDeltas.value" :history="colony.resourceHistory.value" />
