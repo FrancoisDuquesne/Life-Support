@@ -1,0 +1,16 @@
+{
+  "name": "space-colony-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt generate",
+    "deploy": "nuxt generate && rm -rf ../src/main/resources/META-INF/resources/* && cp -r .output/public/* ../src/main/resources/META-INF/resources/"
+  },
+  "dependencies": {
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "nuxt": "^3.15.4"
+  }
+}

@@ -13,6 +13,12 @@ target/
 .DS_Store
 Thumbs.db
 
+# Node
+node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+
 # Claude Code local settings
 .claude/
 
