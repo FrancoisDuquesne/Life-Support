@@ -1,3 +1,5 @@
+const base = process.env.NUXT_APP_BASE_URL || '/'
+
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
@@ -7,6 +9,7 @@ export default defineNuxtConfig({
     '~/assets/css/global.css'
   ],
   app: {
+    baseURL: base,
     head: {
       title: 'Life Support',
       meta: [
@@ -15,7 +18,7 @@ export default defineNuxtConfig({
         { name: 'theme-color', content: '#0f172a' }
       ],
       link: [
-        { rel: 'icon', type: 'image/svg+xml', href: '/icons/icon-192.svg' }
+        { rel: 'icon', type: 'image/svg+xml', href: `${base}icons/icon-192.svg` }
       ]
     }
   },
@@ -30,12 +33,12 @@ export default defineNuxtConfig({
       display: 'standalone',
       orientation: 'any',
       icons: [
-        { src: '/icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
-        { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' }
+        { src: 'icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
+        { src: 'icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' }
       ]
     },
     workbox: {
-      navigateFallback: '/index.html',
+      navigateFallback: `${base}index.html`,
       globPatterns: ['**/*.{js,css,html,png,svg,ico}']
     }
   },

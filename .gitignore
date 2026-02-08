@@ -1,7 +1,7 @@
 # Build output
 .nuxt/
 .output/
-dist/
+dist
 
 # IDE
 .idea/
