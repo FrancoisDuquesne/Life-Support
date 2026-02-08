@@ -12,12 +12,6 @@ cd frontend && npm run preview # build + serve locally
 
 Deploy: upload `frontend/.output/public/*` to any static host.
 
-Legacy backend (optional, no longer required):
-```bash
-./mvnw package -DskipTests
-java -jar target/quarkus-app/quarkus-run.jar
-```
-
 ## Architecture
 
 - **Game engine**: All game logic runs client-side in `frontend/utils/gameEngine.js` (port of Colony.java + ColonyService.java). Tick loop via `setInterval` in `useColony.js`.
