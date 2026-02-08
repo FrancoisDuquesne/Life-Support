@@ -2,30 +2,32 @@
 
 ## Build & Run
 
-Backend:
+Fully client-side static SPA — no backend needed.
+
+```bash
+cd frontend && npm run dev     # dev server on :3000
+cd frontend && npm run build   # static SPA in .output/public/
+cd frontend && npm run preview # build + serve locally
+```
+
+Deploy: upload `frontend/.output/public/*` to any static host.
+
+Legacy backend (optional, no longer required):
 ```bash
 ./mvnw package -DskipTests
 java -jar target/quarkus-app/quarkus-run.jar
 ```
 
-Dev mode: `./mvnw quarkus:dev`
-
-Frontend (Nuxt 3 SPA):
-```bash
-cd frontend && npm run dev     # dev server on :3000, proxies /colony to :8080
-cd frontend && npm run build   # static SPA in .output/public/
-cd frontend && npm run deploy  # build + copy into Quarkus static resources
-```
-
 ## Architecture
 
-- **Backend**: Quarkus 3.17, Java 21. Colony state in `Colony.java`, game loop in `GameTickService` (SSE ticks every 5s), REST in `ColonyResource`.
+- **Game engine**: All game logic runs client-side in `frontend/utils/gameEngine.js` (port of Colony.java + ColonyService.java). Tick loop via `setInterval` in `useColony.js`.
+- **Persistence**: localStorage save/load in `frontend/utils/saveManager.js`. Auto-saves on every tick and build action.
+- **PWA**: Installable via `@vite-pwa/nuxt`. Service worker pre-caches all assets for offline play.
 - **Frontend**: Nuxt 3 SPA in `frontend/`. Vue 3 SFCs with `<script setup>`, scoped CSS. HTML5 Canvas hex map.
-  - `utils/`: shared modules — `constants.js` (hex geometry, colors), `hex.js` (hex math), `drawing.js` (canvas rendering)
-  - `composables/`: `useColony.js`, `useCamera.js`, `useGridInteraction.js`
+  - `utils/`: shared modules — `constants.js` (hex geometry, colors), `hex.js` (hex math), `drawing.js` (canvas rendering), `gameEngine.js` (game logic), `saveManager.js` (localStorage)
+  - `composables/`: `useColony.js` (state + tick loop + save/load), `useCamera.js`, `useGridInteraction.js`
   - `components/`: `HeaderBar.vue`, `ResourcePanel.vue`, `PopulationBar.vue`, `GameMap.vue`, `BuildPanel.vue`, `ResourceGraph.vue`, `EventLog.vue`
   - `pages/index.vue`: root page wiring all components
-  - Dev proxy: `/colony` -> `http://localhost:8080` (in nuxt.config.ts)
 
 ## Key Conventions
 
@@ -35,3 +37,4 @@ cd frontend && npm run deploy  # build + copy into Quarkus static resources
 - The `drawBuilding()` function in `utils/drawing.js` is shared between `GameMap` (on-map) and `BuildPanel` (thumbnails) — keep the signature `(ctx, type, x, y, size, alpha)` compatible.
 - Resource history is capped at 60 entries. Sparklines show the last 20.
 - Nuxt auto-imports: `ref`, `computed`, `watch`, `onMounted`, `onUnmounted`, `nextTick` are available without explicit imports in composables and `<script setup>`.
+- Game state is mutable internally (`colony` object in `useColony`), with reactive snapshots pushed to `state` ref via `toSnapshot()`.
