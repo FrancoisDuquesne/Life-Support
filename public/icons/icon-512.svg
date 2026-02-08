@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="80" fill="#0f172a"/>
+  <g transform="translate(256,256)">
+    <!-- Hex shape -->
+    <polygon points="0,-160 139,-80 139,80 0,160 -139,80 -139,-80" fill="none" stroke="#38bdf8" stroke-width="8"/>
+    <!-- Inner dome -->
+    <path d="M-80,28 Q0,-108 80,28" fill="none" stroke="#22d3ee" stroke-width="6"/>
+    <line x1="-80" y1="28" x2="80" y2="28" stroke="#22d3ee" stroke-width="4"/>
+    <!-- Solar panels -->
+    <rect x="-128" y="-22" width="38" height="28" rx="3" fill="#d97706" opacity="0.9"/>
+    <rect x="90" y="-22" width="38" height="28" rx="3" fill="#d97706" opacity="0.9"/>
+    <!-- Life support cross -->
+    <rect x="-8" y="-54" width="16" height="48" rx="2" fill="#16a34a"/>
+    <rect x="-24" y="-38" width="48" height="16" rx="2" fill="#16a34a"/>
+  </g>
+</svg>

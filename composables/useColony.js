@@ -1,16 +1,25 @@
 import { hexNeighbors, hexDistance, hexesInRadius, mulberry32 } from '~/utils/hex'
+import {
+  createColonyState,
+  processTick as engineTick,
+  buildAt as engineBuild,
+  toSnapshot,
+  getBuildingsInfo as engineBuildingsInfo,
+  GRID_WIDTH,
+  GRID_HEIGHT
+} from '~/utils/gameEngine'
+import { saveGame, loadGame, clearSave } from '~/utils/saveManager'
 
-export function useColony(colonyId) {
-  const baseUrl = colonyId ? `/colony/${colonyId}` : '/colony'
-
+export function useColony() {
   const state = ref(null)
-  const config = ref(null)
   const buildingsInfo = ref([])
   const eventLog = ref([])
   const resourceHistory = ref([])
   const MAX_HISTORY = 60
-  const connected = ref(false)
-  let eventSource = null
+
+  // Internal mutable colony (not the reactive snapshot)
+  let colony = null
+  let tickTimer = null
 
   // Revealed tiles state
   const revealedTiles = ref(new Set())
@@ -22,7 +31,6 @@ export function useColony(colonyId) {
     const revealed = new Set()
     const TARGET = 180
 
-    // BFS flood-fill from center with distance-based probability falloff
     const queue = [[centerCol, centerRow]]
     const visited = new Set()
     visited.add(centerCol + ',' + centerRow)
@@ -38,7 +46,6 @@ export function useColony(colonyId) {
         visited.add(key)
 
         const dist = hexDistance(centerCol, centerRow, nc, nr)
-        // Probability falls off with distance: ~95% near center, ~30% at edges
         const prob = Math.max(0.25, 0.95 - dist * 0.065)
         if (rng() < prob) {
           revealed.add(key)
@@ -61,79 +68,72 @@ export function useColony(colonyId) {
     revealedTiles.value = newSet
   }
 
-  async function init() {
-    try {
-      const [configRes, stateRes] = await Promise.all([
-        fetch(`${baseUrl}/config`),
-        fetch(baseUrl)
-      ])
-      config.value = await configRes.json()
-      state.value = await stateRes.json()
-      buildingsInfo.value = config.value.buildings || []
+  function init() {
+    buildingsInfo.value = engineBuildingsInfo()
+
+    // Try loading saved game
+    const saved = loadGame()
+    if (saved) {
+      colony = saved.state
+      revealedTiles.value = saved.revealedTiles
+      state.value = toSnapshot(colony)
+      pushHistory(state.value)
+      addLog(colony.tickCount, 'Colony restored from save.')
+    } else {
+      colony = createColonyState()
+      state.value = toSnapshot(colony)
       pushHistory(state.value)
       addLog(0, 'Colony connection established.')
-      initRevealedMap(config.value.gridWidth || 32, config.value.gridHeight || 32)
-      connectSSE()
-    } catch (e) {
-      addLog(null, 'Failed to connect to colony server.')
+      initRevealedMap(GRID_WIDTH, GRID_HEIGHT)
+    }
+
+    startTickTimer()
+  }
+
+  function startTickTimer() {
+    stopTickTimer()
+    tickTimer = setInterval(() => {
+      doTick()
+    }, tickSpeed.value)
+  }
+
+  function stopTickTimer() {
+    if (tickTimer !== null) {
+      clearInterval(tickTimer)
+      tickTimer = null
     }
   }
 
-  function connectSSE() {
-    if (eventSource) { eventSource.close(); eventSource = null }
-    eventSource = new EventSource(`${baseUrl}/events`)
-    connected.value = true
-    eventSource.onmessage = function(e) {
-      try {
-        const data = JSON.parse(e.data)
-        if (data.colonyState) {
-          state.value = data.colonyState
-          pushHistory(data.colonyState)
-        }
-        if (data.events) addLog(data.tick, data.events)
-      } catch (err) { /* ignore */ }
-    }
-    eventSource.onerror = function() {
-      connected.value = false
-      addLog(null, 'SSE connection lost. Retrying...')
-    }
+  function doTick() {
+    if (!colony) return
+    const result = engineTick(colony)
+    state.value = result.colonyState
+    pushHistory(result.colonyState)
+    if (result.events) addLog(result.tick, result.events)
+    saveGame(colony, revealedTiles.value)
   }
 
-  async function buildAt(type, x, y) {
-    try {
-      const res = await fetch(`${baseUrl}/build/${type}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y })
-      })
-      const data = await res.json()
-      if (data.colonyState) {
-        state.value = data.colonyState
-      }
-      addLog(state.value ? state.value.tickCount : null, data.message)
-      return data
-    } catch (e) {
-      addLog(null, 'Build request failed.')
-      return { success: false, message: 'Network error' }
+  function buildAt(type, x, y) {
+    if (!colony) return { success: false, message: 'Colony not initialized' }
+    const result = engineBuild(colony, type, x, y)
+    state.value = result.colonyState
+    addLog(state.value ? state.value.tickCount : null, result.message)
+    if (result.success) {
+      saveGame(colony, revealedTiles.value)
     }
+    return result
   }
 
-  async function resetColony() {
-    try {
-      const res = await fetch(`${baseUrl}/reset`, { method: 'POST' })
-      state.value = await res.json()
-      eventLog.value = []
-      resourceHistory.value = []
-      pushHistory(state.value)
-      addLog(0, 'Colony has been reset.')
-      // Re-initialize revealed map
-      const gw = config.value ? config.value.gridWidth : 32
-      const gh = config.value ? config.value.gridHeight : 32
-      initRevealedMap(gw, gh)
-      connectSSE()
-    } catch (e) {
-      addLog(null, 'Reset failed.')
-    }
+  function resetColony() {
+    clearSave()
+    colony = createColonyState()
+    state.value = toSnapshot(colony)
+    eventLog.value = []
+    resourceHistory.value = []
+    pushHistory(state.value)
+    addLog(0, 'Colony has been reset.')
+    initRevealedMap(GRID_WIDTH, GRID_HEIGHT)
+    startTickTimer()
   }
 
   function pushHistory(cs) {
@@ -185,7 +185,6 @@ export function useColony(colonyId) {
       }
     })
 
-    // Population consumption
     const pop = state.value.population || 0
     deltas.food -= Math.floor(pop / 2)
     deltas.water -= Math.floor(pop / 3)
@@ -193,31 +192,20 @@ export function useColony(colonyId) {
     return deltas
   })
 
-  const gridWidth = computed(() => config.value ? config.value.gridWidth : 32)
-  const gridHeight = computed(() => config.value ? config.value.gridHeight : 32)
+  const gridWidth = computed(() => GRID_WIDTH)
+  const gridHeight = computed(() => GRID_HEIGHT)
 
   const tickSpeed = ref(5000)
 
-  async function manualTick() {
-    try {
-      await fetch(`${baseUrl}/tick`, { method: 'POST' })
-    } catch (e) {
-      addLog(null, 'Manual tick failed.')
-    }
+  function manualTick() {
+    doTick()
   }
 
-  async function setSpeed(intervalMs) {
-    try {
-      const res = await fetch(`${baseUrl}/speed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intervalMs })
-      })
-      const data = await res.json()
-      tickSpeed.value = data.intervalMs
-    } catch (e) {
-      addLog(null, 'Speed change failed.')
-    }
+  function setSpeed(intervalMs) {
+    if (intervalMs < 200) intervalMs = 200
+    if (intervalMs > 30000) intervalMs = 30000
+    tickSpeed.value = intervalMs
+    startTickTimer()
   }
 
   return {

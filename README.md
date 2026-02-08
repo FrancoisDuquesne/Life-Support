@@ -2,6 +2,8 @@
 
 A real-time colony survival simulator. Manage resources, place buildings on a hex-grid map, and expand your territory on a hostile planet.
 
+Runs entirely in the browser — no server needed. Saves progress to localStorage and works offline as an installable PWA.
+
 ## Screenshot
 
 The game renders a hex-tile map with an organic fog-of-war reveal mechanic. A glassmorphic HUD floats over the full-viewport map, showing resource sparklines, building controls, and an event log.
@@ -13,86 +15,68 @@ The game renders a hex-tile map with an organic fog-of-war reveal mechanic. A gl
 - Each building **reveals nearby fog** when placed, expanding your territory
 - The colony ticks every 5 seconds, producing and consuming resources
 - Keep food and water above zero or your colonists will die
+- Use speed controls (1x/2x/5x/10x) or advance ticks manually
 
 ### Buildings
 
-| Building | Produces | Consumes |
-|----------|----------|----------|
-| Solar Panel | Energy | - |
-| Hydroponic Farm | Food | Energy, Water |
-| Water Extractor | Water | Energy |
-| Mine | Minerals | Energy |
-| Habitat | +Population capacity | Food, Water |
-
-## Requirements
-
-- Java 21+
-- No Node.js or frontend build tools needed
+| Building | Cost | Produces | Consumes |
+|----------|------|----------|----------|
+| Solar Panel | 10 minerals | 5 energy | — |
+| Hydroponic Farm | 15 minerals, 5 energy | 3 food | 1 water, 1 energy |
+| Water Extractor | 12 minerals | 4 water | 2 energy |
+| Mine | 8 minerals | 2 minerals | 3 energy |
+| Habitat | 25 minerals, 10 water | +5 population cap | 2 energy |
 
 ## Quick Start
 
 ```bash
-# Build
-./mvnw package -DskipTests
-
-# Run
-java -jar target/quarkus-app/quarkus-run.jar
+npm install
+npm run dev
 ```
 
-Open [http://localhost:8080](http://localhost:8080).
+Open [http://localhost:3000](http://localhost:3000).
 
-## Development Mode
+## Build & Deploy
 
 ```bash
-./mvnw quarkus:dev
+npm run build
 ```
 
-Hot-reloads Java code and serves static frontend files. Open [http://localhost:8080](http://localhost:8080).
+Upload the contents of `.output/public/` to any static hosting (Apache, Nginx, Netlify, Vercel, GitHub Pages, OVH, etc.).
+
+For hosts that don't handle SPA routing natively, add a fallback rule. For example, with Apache `.htaccess`:
+
+```apache
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /index.html [L]
+```
 
 ## Tech Stack
 
-- **Backend**: Quarkus 3.17, Java 21, RESTEasy Reactive + Jackson, Server-Sent Events
-- **Frontend**: Vue 3 (CDN, no build step), HTML5 Canvas
-- **Build**: Maven wrapper included
+- **Framework**: Nuxt 3 (Vue 3), static SPA mode
+- **Rendering**: HTML5 Canvas hex map
+- **Game engine**: Pure JavaScript (`utils/gameEngine.js`)
+- **Persistence**: localStorage (auto-saves every tick)
+- **PWA**: `@vite-pwa/nuxt` — installable, works offline
 
 ## Project Structure
 
 ```
-src/main/java/com/colony/
-  model/          Colony, BuildingType, ResourceType, PlacedBuilding
-  service/        ColonyService (game logic), GameTickService (SSE ticks)
-  resource/       ColonyResource (REST endpoints)
-
-src/main/resources/META-INF/resources/
-  index.html      Single page + all CSS
-  js/app.js       Vue app entry point
-  js/composables/ useColony, useCamera, useGridInteraction
-  js/components/  GameMap, BuildPanel, ResourcePanel, ResourceGraph,
-                  PopulationBar, HeaderBar, EventLog
-```
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/colony` | Current colony state |
-| GET | `/colony/config` | Grid dimensions + building metadata |
-| GET | `/colony/events` | SSE stream of game ticks |
-| POST | `/colony/build/{TYPE}` | Place a building `{"x":0,"y":0}` |
-| POST | `/colony/reset` | Reset the colony |
-
-## Configuration
-
-Edit `src/main/resources/application.properties`:
-
-```properties
-colony.tick.interval=5s
-colony.grid.width=64
-colony.grid.height=64
-colony.start.energy=100
-colony.start.food=50
-colony.start.water=50
-colony.start.minerals=30
+├── assets/css/          Global CSS variables and styles
+├── components/          Vue SFCs (GameMap, BuildPanel, ResourcePanel, etc.)
+├── composables/         Reactive logic (useColony, useCamera, useGridInteraction)
+├── pages/index.vue      Root page wiring all components
+├── public/icons/        PWA icons
+├── utils/
+│   ├── gameEngine.js    Game logic (buildings, ticks, resources, population)
+│   ├── saveManager.js   localStorage save/load
+│   ├── constants.js     Hex geometry and color constants
+│   ├── hex.js           Hex math (neighbors, distance, coordinate conversion)
+│   └── drawing.js       Canvas rendering helpers
+├── nuxt.config.ts       Nuxt + PWA configuration
+└── package.json
 ```
 
 ## License
