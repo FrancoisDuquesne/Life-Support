@@ -1,5 +1,7 @@
 # Build output
-target/
+.nuxt/
+.output/
+dist/
 
 # IDE
 .idea/
@@ -15,13 +17,6 @@ Thumbs.db
 
 # Node
 node_modules/
-frontend/.nuxt/
-frontend/.output/
-frontend/dist/
 
 # Claude Code local settings
 .claude/
-
-# Maven wrapper jar (downloaded on demand)
-!.mvn/wrapper/maven-wrapper.properties
-.mvn/wrapper/maven-wrapper.jar

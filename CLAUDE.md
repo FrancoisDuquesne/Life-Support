@@ -5,19 +5,19 @@
 Fully client-side static SPA — no backend needed.
 
 ```bash
-cd frontend && npm run dev     # dev server on :3000
-cd frontend && npm run build   # static SPA in .output/public/
-cd frontend && npm run preview # build + serve locally
+npm run dev     # dev server on :3000
+npm run build   # static SPA in .output/public/
+npm run preview # build + serve locally
 ```
 
-Deploy: upload `frontend/.output/public/*` to any static host.
+Deploy: upload `.output/public/*` to any static host.
 
 ## Architecture
 
-- **Game engine**: All game logic runs client-side in `frontend/utils/gameEngine.js` (port of Colony.java + ColonyService.java). Tick loop via `setInterval` in `useColony.js`.
-- **Persistence**: localStorage save/load in `frontend/utils/saveManager.js`. Auto-saves on every tick and build action.
+- **Game engine**: All game logic runs client-side in `utils/gameEngine.js`. Tick loop via `setInterval` in `useColony.js`.
+- **Persistence**: localStorage save/load in `utils/saveManager.js`. Auto-saves on every tick and build action.
 - **PWA**: Installable via `@vite-pwa/nuxt`. Service worker pre-caches all assets for offline play.
-- **Frontend**: Nuxt 3 SPA in `frontend/`. Vue 3 SFCs with `<script setup>`, scoped CSS. HTML5 Canvas hex map.
+- **Frontend**: Nuxt 3 SPA at project root. Vue 3 SFCs with `<script setup>`, scoped CSS. HTML5 Canvas hex map.
   - `utils/`: shared modules — `constants.js` (hex geometry, colors), `hex.js` (hex math), `drawing.js` (canvas rendering), `gameEngine.js` (game logic), `saveManager.js` (localStorage)
   - `composables/`: `useColony.js` (state + tick loop + save/load), `useCamera.js`, `useGridInteraction.js`
   - `components/`: `HeaderBar.vue`, `ResourcePanel.vue`, `PopulationBar.vue`, `GameMap.vue`, `BuildPanel.vue`, `ResourceGraph.vue`, `EventLog.vue`
