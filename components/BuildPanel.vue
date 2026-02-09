@@ -26,7 +26,7 @@ function drawAllThumbnails() {
     canvas.width = 44 * dpr
     canvas.height = 44 * dpr
     ctx.scale(dpr, dpr)
-    ctx.fillStyle = '#c2a67d'
+    ctx.fillStyle = '#1e293b'
     ctx.fillRect(0, 0, 44, 44)
     drawBuilding(ctx, b.id, 2, 2, 40, 1)
   }
@@ -93,53 +93,52 @@ const barColorMap = {
 
 <template>
   <div class="p-2 shrink-0">
-    <div class="text-[0.65rem] text-stone-500 uppercase tracking-[2px] mb-1.5 pb-1 border-b border-stone-300">Buildings</div>
+    <div class="text-[0.65rem] text-slate-400 uppercase tracking-[2px] mb-1.5 pb-1 border-b border-slate-700/30">Buildings</div>
     <div class="flex flex-col gap-1.5">
-      <UCard
+      <div
         v-for="b in buildings"
         :key="b.id"
         :class="[
-          'cursor-pointer transition-all duration-150',
-          selectedBuilding === b.id ? 'ring-2 ring-blue-500 bg-blue-500/5' : '',
-          canAfford(b.cost) ? 'border-l-3 border-l-green-600' : 'border-l-3 border-l-red-600 opacity-55 hover:opacity-75'
+          'cursor-pointer transition-all duration-150 bg-slate-800/50 rounded-md p-2',
+          selectedBuilding === b.id ? 'ring-2 ring-cyan-500 bg-cyan-500/10' : '',
+          canAfford(b.cost) ? 'border-l-3 border-l-green-400' : 'border-l-3 border-l-red-400 opacity-55 hover:opacity-75'
         ]"
-        :ui="{ body: 'p-2 sm:p-2' }"
         @click="selectBuilding(b.id)"
       >
         <div class="flex items-start gap-2">
           <canvas :ref="el => setThumbRef(b.id, el)"
-                  class="w-[44px] h-[44px] rounded-sm shrink-0 border border-stone-300 max-md:w-8 max-md:h-8"
+                  class="w-[44px] h-[44px] rounded-sm shrink-0 border border-slate-700/30 max-md:w-8 max-md:h-8"
                   width="44" height="44"></canvas>
           <div class="flex-1 min-w-0">
-            <div class="text-[0.8rem] text-stone-900 font-bold">{{ b.name }}</div>
-            <div class="text-[0.6rem] text-stone-500 mt-px">{{ b.description }}</div>
+            <div class="text-[0.8rem] text-slate-100 font-bold">{{ b.name }}</div>
+            <div class="text-[0.6rem] text-slate-400 mt-px">{{ b.description }}</div>
           </div>
         </div>
 
-        <div class="flex flex-col gap-0.5 mt-1.5 p-1.5 bg-black/[0.04] rounded-sm">
-          <div class="text-[0.55rem] uppercase tracking-[1px] text-stone-500">Cost</div>
+        <div class="flex flex-col gap-0.5 mt-1.5 p-1.5 bg-slate-900/50 rounded-sm">
+          <div class="text-[0.55rem] uppercase tracking-[1px] text-slate-400">Cost</div>
           <div v-for="(amount, res) in b.cost" :key="res" class="flex items-center gap-1 text-[0.7rem]">
-            <span class="min-w-[48px] text-stone-500 text-[0.55rem] uppercase tracking-[0.5px]">{{ res }}</span>
-            <div class="flex-1 h-[5px] bg-black/[0.08] rounded-sm overflow-hidden">
+            <span class="min-w-[48px] text-slate-400 text-[0.55rem] uppercase tracking-[0.5px]">{{ res }}</span>
+            <div class="flex-1 h-[5px] bg-slate-700/50 rounded-sm overflow-hidden">
               <div :class="['h-full rounded-sm transition-[width] duration-500', barColorMap[res]]"
                    :style="{ width: costBarPct(res, amount) + '%' }"></div>
             </div>
-            <span :class="['text-[0.65rem] font-bold min-w-[38px] text-right tabular-nums', getResourceVal(res) >= amount ? 'text-green-600' : 'text-red-600']">
+            <span :class="['text-[0.65rem] font-bold min-w-[38px] text-right tabular-nums', getResourceVal(res) >= amount ? 'text-green-400' : 'text-red-400']">
               {{ getResourceVal(res) }}/{{ amount }}
             </span>
           </div>
           <template v-if="hasEntries(b.produces)">
-            <div class="text-[0.55rem] uppercase tracking-[1px] text-green-600 mt-0.5">Produces</div>
-            <div class="text-[0.7rem] font-bold text-green-600">+{{ formatMap(b.produces) }}/tick</div>
+            <div class="text-[0.55rem] uppercase tracking-[1px] text-green-400 mt-0.5">Produces</div>
+            <div class="text-[0.7rem] font-bold text-green-400">+{{ formatMap(b.produces) }}/tick</div>
           </template>
           <template v-if="hasEntries(b.consumes)">
-            <div class="text-[0.55rem] uppercase tracking-[1px] text-red-600 mt-0.5">Consumes</div>
-            <div class="text-[0.7rem] font-bold text-red-600">-{{ formatMap(b.consumes) }}/tick</div>
+            <div class="text-[0.55rem] uppercase tracking-[1px] text-red-400 mt-0.5">Consumes</div>
+            <div class="text-[0.7rem] font-bold text-red-400">-{{ formatMap(b.consumes) }}/tick</div>
           </template>
         </div>
 
         <div class="flex items-center justify-between mt-1">
-          <span class="text-[0.7rem] text-blue-600 font-bold">x{{ getCount(b.id) }}</span>
+          <span class="text-[0.7rem] text-cyan-400 font-bold">x{{ getCount(b.id) }}</span>
           <UBadge
             :color="canAfford(b.cost) ? 'success' : 'error'"
             variant="subtle"
@@ -150,7 +149,7 @@ const barColorMap = {
             <template v-else>NEED: {{ getMissingResource(b.cost) }}</template>
           </UBadge>
         </div>
-      </UCard>
+      </div>
     </div>
   </div>
 </template>

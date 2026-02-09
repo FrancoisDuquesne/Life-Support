@@ -45,12 +45,12 @@ function drawGraph() {
     canvas.height = h * dpr
     ctx.scale(dpr, dpr)
 
-    ctx.fillStyle = '#f7f4ef'
+    ctx.fillStyle = '#0f172a'
     ctx.fillRect(0, 0, w, h)
 
     const data = props.history || []
     if (data.length < 2) {
-      ctx.fillStyle = '#8a7e6b'
+      ctx.fillStyle = '#64748b'
       ctx.font = '11px "Courier New", monospace'
       ctx.textAlign = 'center'
       ctx.fillText('Waiting for data...', w / 2, h / 2)
@@ -73,10 +73,10 @@ function drawGraph() {
     const plotW = w - padL - padR
     const plotH = h - padT - padB
 
-    ctx.strokeStyle = 'rgba(0,0,0,0.07)'
+    ctx.strokeStyle = 'rgba(148,163,184,0.1)'
     ctx.lineWidth = 0.5
     ctx.font = '9px "Courier New", monospace'
-    ctx.fillStyle = '#8a7e6b'
+    ctx.fillStyle = '#64748b'
     ctx.textAlign = 'right'
     for (let v = step; v < yMax; v += step) {
       const y = padT + plotH - (v / yMax) * plotH
@@ -95,7 +95,7 @@ function drawGraph() {
     ctx.fillText('0', padL - 4, zeroY + 3)
 
     ctx.textAlign = 'center'
-    ctx.fillStyle = '#8a7e6b'
+    ctx.fillStyle = '#64748b'
     const xStep = Math.max(1, Math.floor(data.length / 6))
     for (let i = 0; i < data.length; i += xStep) {
       const x = padL + (i / (data.length - 1)) * plotW
@@ -150,10 +150,10 @@ watch(graphCanvas, (canvas) => {
     <template #body>
       <canvas ref="graphCanvas" class="w-full h-[200px] block rounded max-md:h-[120px]"></canvas>
       <div class="flex gap-3 mt-2 text-[0.55rem] uppercase tracking-[0.5px]">
-        <span class="font-bold text-amber-600">Energy</span>
-        <span class="font-bold text-green-600">Food</span>
-        <span class="font-bold text-blue-600">Water</span>
-        <span class="font-bold text-orange-600">Minerals</span>
+        <span class="font-bold text-amber-400">Energy</span>
+        <span class="font-bold text-green-400">Food</span>
+        <span class="font-bold text-blue-400">Water</span>
+        <span class="font-bold text-orange-400">Minerals</span>
       </div>
     </template>
   </UModal>

@@ -4,7 +4,8 @@ import { RESOURCE_KEYS, COLORS } from '~/utils/constants'
 const props = defineProps({
   state: Object,
   deltas: Object,
-  history: Array
+  history: Array,
+  compact: { type: Boolean, default: false }
 })
 
 const flashKeys = ref({})
@@ -94,32 +95,54 @@ const textColorMap = {
   minerals: 'text-orange-600'
 }
 
+const abbrev = {
+  energy: 'NRG',
+  food: 'FOD',
+  water: 'H2O',
+  minerals: 'MIN'
+}
+
 function isFlashing(key) {
   return !!flashKeys.value[key]
 }
 </script>
 
 <template>
-  <div class="flex gap-2 flex-1 min-w-0">
-    <UCard
-      v-for="r in resources"
-      :key="r.key"
-      :class="['flex-1 min-w-[110px] border-l-3', borderColorMap[r.key], 'max-md:min-w-[80px]']"
-      :ui="{ body: 'p-1.5 sm:p-1.5' }"
-    >
-      <div :class="['text-[0.6rem] uppercase tracking-[1.5px] mb-0.5', textColorMap[r.key]]">{{ r.key }}</div>
-      <div class="flex items-baseline gap-1.5 mb-0.5">
-        <span :class="['text-lg font-bold tabular-nums', textColorMap[r.key], { 'animate-pulse': isFlashing(r.key) }]">{{ r.val }}</span>
-        <UBadge
-          :color="r.delta > 0 ? 'success' : r.delta < 0 ? 'error' : 'neutral'"
-          variant="subtle"
-          size="sm"
-          class="text-xs font-bold whitespace-nowrap"
-        >
-          {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}/t
-        </UBadge>
+  <!-- Compact mode: mobile horizontal -->
+  <template v-if="compact">
+    <div class="flex gap-2 flex-1 min-w-0 items-center">
+      <div v-for="r in resources" :key="r.key" class="flex items-center gap-1 text-[0.6rem] whitespace-nowrap">
+        <span :class="[textColorMap[r.key], 'uppercase font-bold']">{{ abbrev[r.key] }}</span>
+        <span :class="['tabular-nums text-slate-100', { 'animate-pulse': isFlashing(r.key) }]">{{ r.val }}</span>
+        <span :class="[r.delta > 0 ? 'text-green-400' : r.delta < 0 ? 'text-red-400' : 'text-slate-500', 'text-[0.55rem]']">
+          {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}
+        </span>
       </div>
-      <canvas :ref="el => setSparkRef(r.key, el)" class="w-[60px] h-4 block opacity-85 max-md:w-[50px] max-md:h-3.5"></canvas>
-    </UCard>
-  </div>
+    </div>
+  </template>
+
+  <!-- Full mode: vertical sidebar -->
+  <template v-else>
+    <div class="flex flex-col gap-1.5">
+      <div
+        v-for="r in resources"
+        :key="r.key"
+        :class="['bg-slate-800/50 rounded-md border-l-3 p-2', borderColorMap[r.key]]"
+      >
+        <div :class="['text-[0.6rem] uppercase tracking-[1.5px] mb-0.5', textColorMap[r.key]]">{{ r.key }}</div>
+        <div class="flex items-baseline gap-1.5 mb-0.5">
+          <span :class="['text-lg font-bold tabular-nums text-slate-100', { 'animate-pulse': isFlashing(r.key) }]">{{ r.val }}</span>
+          <UBadge
+            :color="r.delta > 0 ? 'success' : r.delta < 0 ? 'error' : 'neutral'"
+            variant="subtle"
+            size="sm"
+            class="text-xs font-bold whitespace-nowrap"
+          >
+            {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}/t
+          </UBadge>
+        </div>
+        <canvas :ref="el => setSparkRef(r.key, el)" class="w-full h-4 block opacity-85"></canvas>
+      </div>
+    </div>
+  </template>
 </template>

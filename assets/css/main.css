@@ -15,10 +15,25 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   overflow: hidden;
+  background: #0f172a;
+  color: #e2e8f0;
 }
 
 .app-layout { position: relative; height: 100vh; overflow: hidden }
 .map-fullscreen { position: absolute; inset: 0; z-index: 1 }
+
+/* Glass-morphism panel */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(16px);
+  border-color: rgba(148, 163, 184, 0.15);
+}
+
+/* Dark scrollbar */
+.scrollbar-dark::-webkit-scrollbar { width: 6px }
+.scrollbar-dark::-webkit-scrollbar-track { background: transparent }
+.scrollbar-dark::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 3px }
+.scrollbar-dark::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.35) }
 
 /* Loading state */
 #__nuxt:empty::after {
@@ -27,6 +42,6 @@ body {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  color: #8a7e6b;
+  color: #94a3b8;
   font-size: .9rem;
 }

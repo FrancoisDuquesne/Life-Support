@@ -20,10 +20,10 @@ function isActive(ms) {
 </script>
 
 <template>
-  <header class="absolute top-0 left-0 right-[280px] z-10 flex items-center justify-between flex-wrap gap-3 px-4 py-2.5 border-b border-stone-300/50 bg-black/50 backdrop-blur-md max-md:right-0">
-    <h1 class="text-base text-white/90 tracking-[2px] uppercase">{{ state ? state.name : 'Life Support' }}</h1>
+  <header class="absolute top-0 left-0 right-0 z-20 flex items-center justify-between flex-wrap gap-3 px-4 py-2.5 border-b border-slate-700/30 glass-panel">
+    <h1 class="text-base text-cyan-400/90 tracking-[3px] uppercase">{{ state ? state.name : 'Life Support' }}</h1>
     <div class="flex items-center gap-3 flex-wrap">
-      <span class="text-white/55 text-xs">T{{ state ? state.tickCount : 0 }}</span>
+      <span class="text-slate-500 text-xs">T{{ state ? state.tickCount : 0 }}</span>
       <UButtonGroup size="xs">
         <UButton
           v-for="s in SPEEDS"
