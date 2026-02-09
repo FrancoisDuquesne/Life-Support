@@ -15,56 +15,23 @@ watch(() => props.log.length, () => {
 </script>
 
 <template>
-  <div class="event-log-section">
-    <div class="build-panel-title">Event Log</div>
-    <div class="event-log" ref="logEl">
-      <div v-for="entry in log" :key="entry.id" :class="['log-entry', entry.severity]">
-        <span v-if="entry.tick != null" class="log-tick">[T{{ entry.tick }}]</span>
-        <span class="log-msg">{{ entry.msg }}</span>
+  <div class="p-2 flex-1 flex flex-col min-h-0">
+    <div class="text-[0.65rem] text-stone-500 uppercase tracking-[2px] mb-1.5 pb-1 border-b border-stone-300">Event Log</div>
+    <UCard class="flex-1 min-h-[100px] overflow-hidden" :ui="{ body: 'p-0 sm:p-0' }">
+      <div ref="logEl" class="p-1.5 overflow-y-auto h-full text-[0.65rem] scrollbar-thin scrollbar-thumb-stone-300">
+        <div v-for="entry in log" :key="entry.id"
+             class="py-px border-b border-black/[0.06]">
+          <span v-if="entry.tick != null" class="text-stone-500 mr-1.5">[T{{ entry.tick }}]</span>
+          <span :class="[
+            entry.severity === 'normal' ? 'text-green-600' : '',
+            entry.severity === 'warning' ? 'text-yellow-600' : '',
+            entry.severity === 'collapse' ? 'text-red-600 font-bold' : ''
+          ]">{{ entry.msg }}</span>
+        </div>
+        <div v-if="!log.length" class="text-green-600">
+          Awaiting colony data...
+        </div>
       </div>
-      <div v-if="!log.length" class="log-entry normal">
-        <span class="log-msg">Awaiting colony data...</span>
-      </div>
-    </div>
+    </UCard>
   </div>
 </template>
-
-<style scoped>
-.event-log-section {
-  padding: 8px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.build-panel-title {
-  font-size: .65rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-}
-.event-log {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 8px;
-  flex: 1;
-  overflow-y: auto;
-  font-size: .65rem;
-  min-height: 100px;
-}
-.event-log::-webkit-scrollbar { width: 4px }
-.event-log::-webkit-scrollbar-track { background: transparent }
-.event-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px }
-.log-entry {
-  padding: 1px 0;
-  border-bottom: 1px solid rgba(0,0,0,.06);
-}
-.log-entry .log-tick { color: var(--text-dim); margin-right: 6px }
-.log-entry.normal .log-msg { color: var(--success) }
-.log-entry.warning .log-msg { color: var(--warning) }
-.log-entry.collapse .log-msg { color: var(--danger); font-weight: bold }
-</style>

@@ -82,169 +82,75 @@ function costBarPct(res, amount) {
 function selectBuilding(id) {
   emit('select', id)
 }
+
+const barColorMap = {
+  energy: 'bg-amber-600',
+  food: 'bg-green-600',
+  water: 'bg-blue-600',
+  minerals: 'bg-orange-600'
+}
 </script>
 
 <template>
-  <div class="build-panel">
-    <div class="build-panel-title">Buildings</div>
-    <div class="build-cards">
-      <div v-for="b in buildings" :key="b.id"
-           :class="['building-card',
-                     { selected: selectedBuilding === b.id },
-                     canAfford(b.cost) ? 'affordable' : 'unaffordable']"
-           @click="selectBuilding(b.id)">
-        <div class="b-card-header">
+  <div class="p-2 shrink-0">
+    <div class="text-[0.65rem] text-stone-500 uppercase tracking-[2px] mb-1.5 pb-1 border-b border-stone-300">Buildings</div>
+    <div class="flex flex-col gap-1.5">
+      <UCard
+        v-for="b in buildings"
+        :key="b.id"
+        :class="[
+          'cursor-pointer transition-all duration-150',
+          selectedBuilding === b.id ? 'ring-2 ring-blue-500 bg-blue-500/5' : '',
+          canAfford(b.cost) ? 'border-l-3 border-l-green-600' : 'border-l-3 border-l-red-600 opacity-55 hover:opacity-75'
+        ]"
+        :ui="{ body: 'p-2 sm:p-2' }"
+        @click="selectBuilding(b.id)"
+      >
+        <div class="flex items-start gap-2">
           <canvas :ref="el => setThumbRef(b.id, el)"
-                  class="b-thumb-canvas"
+                  class="w-[44px] h-[44px] rounded-sm shrink-0 border border-stone-300 max-md:w-8 max-md:h-8"
                   width="44" height="44"></canvas>
-          <div class="b-card-title">
-            <div class="b-name">{{ b.name }}</div>
-            <div class="b-desc">{{ b.description }}</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[0.8rem] text-stone-900 font-bold">{{ b.name }}</div>
+            <div class="text-[0.6rem] text-stone-500 mt-px">{{ b.description }}</div>
           </div>
         </div>
-        <div class="b-stats">
-          <div class="b-stats-label">Cost</div>
-          <div v-for="(amount, res) in b.cost" :key="res" class="b-cost-row">
-            <span class="b-cost-label">{{ res }}</span>
-            <div class="b-cost-bar-track">
-              <div :class="['b-cost-bar-fill', res]"
+
+        <div class="flex flex-col gap-0.5 mt-1.5 p-1.5 bg-black/[0.04] rounded-sm">
+          <div class="text-[0.55rem] uppercase tracking-[1px] text-stone-500">Cost</div>
+          <div v-for="(amount, res) in b.cost" :key="res" class="flex items-center gap-1 text-[0.7rem]">
+            <span class="min-w-[48px] text-stone-500 text-[0.55rem] uppercase tracking-[0.5px]">{{ res }}</span>
+            <div class="flex-1 h-[5px] bg-black/[0.08] rounded-sm overflow-hidden">
+              <div :class="['h-full rounded-sm transition-[width] duration-500', barColorMap[res]]"
                    :style="{ width: costBarPct(res, amount) + '%' }"></div>
             </div>
-            <span :class="['b-cost-amount', getResourceVal(res) >= amount ? 'b-cost-met' : 'b-cost-unmet']">
+            <span :class="['text-[0.65rem] font-bold min-w-[38px] text-right tabular-nums', getResourceVal(res) >= amount ? 'text-green-600' : 'text-red-600']">
               {{ getResourceVal(res) }}/{{ amount }}
             </span>
           </div>
           <template v-if="hasEntries(b.produces)">
-            <div class="b-stats-label prod">Produces</div>
-            <div class="b-stat-line prod-val">+{{ formatMap(b.produces) }}/tick</div>
+            <div class="text-[0.55rem] uppercase tracking-[1px] text-green-600 mt-0.5">Produces</div>
+            <div class="text-[0.7rem] font-bold text-green-600">+{{ formatMap(b.produces) }}/tick</div>
           </template>
           <template v-if="hasEntries(b.consumes)">
-            <div class="b-stats-label cons">Consumes</div>
-            <div class="b-stat-line cons-val">-{{ formatMap(b.consumes) }}/tick</div>
+            <div class="text-[0.55rem] uppercase tracking-[1px] text-red-600 mt-0.5">Consumes</div>
+            <div class="text-[0.7rem] font-bold text-red-600">-{{ formatMap(b.consumes) }}/tick</div>
           </template>
         </div>
-        <div class="b-card-footer">
-          <span class="b-owned">x{{ getCount(b.id) }}</span>
-          <div :class="['b-afford-badge', canAfford(b.cost) ? 'ready' : 'blocked']">
+
+        <div class="flex items-center justify-between mt-1">
+          <span class="text-[0.7rem] text-blue-600 font-bold">x{{ getCount(b.id) }}</span>
+          <UBadge
+            :color="canAfford(b.cost) ? 'success' : 'error'"
+            variant="subtle"
+            size="sm"
+            class="uppercase tracking-[0.5px] text-[0.6rem] font-bold"
+          >
             <template v-if="canAfford(b.cost)">READY</template>
             <template v-else>NEED: {{ getMissingResource(b.cost) }}</template>
-          </div>
+          </UBadge>
         </div>
-      </div>
+      </UCard>
     </div>
   </div>
 </template>
-
-<style scoped>
-.build-panel { padding: 8px; flex-shrink: 0 }
-.build-panel-title {
-  font-size: .65rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-}
-.build-cards { display: flex; flex-direction: column; gap: 6px }
-.building-card {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 8px;
-  cursor: pointer;
-  transition: all .15s;
-}
-.building-card:hover { border-color: #b8ad9e; background: #f0ebe3 }
-.building-card.selected { border-color: var(--water); background: rgba(37,99,235,.08) }
-.building-card .b-name { font-size: .8rem; color: var(--text-bright); font-weight: bold }
-.building-card .b-desc { font-size: .6rem; color: var(--text-dim); margin-top: 1px }
-.building-card.affordable { border-left: 3px solid var(--success) }
-.building-card.unaffordable { border-left: 3px solid var(--danger); opacity: .55 }
-.building-card.unaffordable:hover { opacity: .75 }
-.b-card-header { display: flex; align-items: flex-start; gap: 8px }
-.b-thumb-canvas {
-  width: 44px;
-  height: 44px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  border: 1px solid var(--border);
-}
-.b-card-title { flex: 1; min-width: 0 }
-.building-card .b-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 5px;
-  padding: 5px 6px;
-  background: rgba(0,0,0,.04);
-  border-radius: 3px;
-}
-.b-stats-label {
-  font-size: .55rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-dim);
-  margin-top: 2px;
-}
-.b-stats-label:first-child { margin-top: 0 }
-.b-stats-label.prod { color: var(--success) }
-.b-stats-label.cons { color: var(--danger) }
-.b-stat-line { font-size: .7rem; font-weight: bold }
-.b-stat-line.prod-val { color: var(--success) }
-.b-stat-line.cons-val { color: var(--danger) }
-.b-cost-row { display: flex; align-items: center; gap: 4px; font-size: .7rem }
-.b-cost-label {
-  min-width: 48px;
-  color: var(--text-dim);
-  font-size: .55rem;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-}
-.b-cost-bar-track {
-  flex: 1;
-  height: 5px;
-  background: rgba(0,0,0,.08);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.b-cost-bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width .5s ease;
-}
-.b-cost-bar-fill.energy { background: var(--energy) }
-.b-cost-bar-fill.food { background: var(--food) }
-.b-cost-bar-fill.water { background: var(--water) }
-.b-cost-bar-fill.minerals { background: var(--minerals) }
-.b-cost-amount {
-  font-size: .65rem;
-  font-weight: bold;
-  min-width: 38px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.b-cost-met { color: var(--success) }
-.b-cost-unmet { color: var(--danger) }
-.b-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 4px;
-}
-.building-card .b-owned { font-size: .7rem; color: var(--water); font-weight: bold }
-.b-afford-badge {
-  font-size: .6rem;
-  font-weight: bold;
-  padding: 2px 8px;
-  border-radius: 3px;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-}
-.b-afford-badge.ready { background: rgba(22,163,74,.12); color: var(--success) }
-.b-afford-badge.blocked { background: rgba(220,38,38,.1); color: var(--danger) }
-
-@media (max-width: 768px) {
-  .b-thumb-canvas { width: 32px; height: 32px }
-}
-</style>

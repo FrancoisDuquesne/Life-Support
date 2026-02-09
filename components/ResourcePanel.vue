@@ -80,81 +80,46 @@ const resources = computed(() => {
   })
 })
 
+const borderColorMap = {
+  energy: 'border-l-amber-600',
+  food: 'border-l-green-600',
+  water: 'border-l-blue-600',
+  minerals: 'border-l-orange-600'
+}
+
+const textColorMap = {
+  energy: 'text-amber-600',
+  food: 'text-green-600',
+  water: 'text-blue-600',
+  minerals: 'text-orange-600'
+}
+
 function isFlashing(key) {
   return !!flashKeys.value[key]
 }
 </script>
 
 <template>
-  <div class="resources-strip">
-    <div v-for="r in resources" :key="r.key"
-         :class="['resource-card', r.key]">
-      <div class="label">{{ r.key }}</div>
-      <div class="resource-val-row">
-        <span :class="['value', { flashing: isFlashing(r.key) }]">{{ r.val }}</span>
-        <span :class="['delta-pill', r.delta > 0 ? 'positive' : r.delta < 0 ? 'negative' : 'neutral']">
+  <div class="flex gap-2 flex-1 min-w-0">
+    <UCard
+      v-for="r in resources"
+      :key="r.key"
+      :class="['flex-1 min-w-[110px] border-l-3', borderColorMap[r.key], 'max-md:min-w-[80px]']"
+      :ui="{ body: 'p-1.5 sm:p-1.5' }"
+    >
+      <div :class="['text-[0.6rem] uppercase tracking-[1.5px] mb-0.5', textColorMap[r.key]]">{{ r.key }}</div>
+      <div class="flex items-baseline gap-1.5 mb-0.5">
+        <span :class="['text-lg font-bold tabular-nums', textColorMap[r.key], { 'animate-pulse': isFlashing(r.key) }]">{{ r.val }}</span>
+        <UBadge
+          :color="r.delta > 0 ? 'success' : r.delta < 0 ? 'error' : 'neutral'"
+          variant="subtle"
+          size="sm"
+          class="text-xs font-bold whitespace-nowrap"
+        >
           {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}/t
-        </span>
+        </UBadge>
       </div>
-      <canvas :ref="el => setSparkRef(r.key, el)" class="sparkline-canvas"></canvas>
-    </div>
+      <canvas :ref="el => setSparkRef(r.key, el)" class="w-[60px] h-4 block opacity-85 max-md:w-[50px] max-md:h-3.5"></canvas>
+    </UCard>
   </div>
 </template>
-
-<style scoped>
-.resources-strip { display: flex; gap: 8px; flex: 1; min-width: 0 }
-.resource-card {
-  background: rgba(247,244,239,0.45);
-  border: 1px solid rgba(214,207,196,0.5);
-  border-radius: 4px;
-  padding: 6px 10px;
-  min-width: 110px;
-  flex: 1;
-  border-left: 3px solid transparent;
-}
-.resource-card .label {
-  font-size: .6rem;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  margin-bottom: 2px;
-}
-.resource-val-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-.resource-card .value {
-  font-size: 1.1rem;
-  font-weight: bold;
-  font-variant-numeric: tabular-nums;
-}
-.delta-pill {
-  font-size: .75rem;
-  font-weight: bold;
-  white-space: nowrap;
-  padding: 1px 6px;
-  border-radius: 3px;
-}
-.delta-pill.positive { color: var(--success); background: rgba(22,163,74,.1) }
-.delta-pill.negative { color: var(--danger); background: rgba(220,38,38,.1) }
-.delta-pill.neutral { color: var(--text-dim); background: rgba(0,0,0,.04) }
-.resource-card.energy .label, .resource-card.energy .value { color: var(--energy) }
-.resource-card.food .label, .resource-card.food .value { color: var(--food) }
-.resource-card.water .label, .resource-card.water .value { color: var(--water) }
-.resource-card.minerals .label, .resource-card.minerals .value { color: var(--minerals) }
-.resource-card.energy { border-left-color: var(--energy) }
-.resource-card.food { border-left-color: var(--food) }
-.resource-card.water { border-left-color: var(--water) }
-.resource-card.minerals { border-left-color: var(--minerals) }
-.sparkline-canvas { width: 60px; height: 16px; display: block; opacity: 0.85 }
-
-@keyframes resource-flash { 0% { filter: brightness(1.4) } 100% { filter: brightness(1) } }
-.resource-card .value.flashing { animation: resource-flash .5s ease }
-
-@media (max-width: 768px) {
-  .resource-card { min-width: 80px; padding: 4px 6px }
-  .resource-card .value { font-size: .9rem }
-  .sparkline-canvas { width: 50px; height: 14px }
-}
-</style>

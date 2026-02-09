@@ -8,6 +8,11 @@ const props = defineProps({
 
 const emit = defineEmits(['toggle'])
 
+const open = computed({
+  get: () => props.expanded,
+  set: (val) => { if (!val) emit('toggle') }
+})
+
 const graphCanvas = ref(null)
 
 function niceScale(maxVal) {
@@ -135,81 +140,21 @@ watch(() => props.history && props.history.length, drawGraph)
 watch(() => props.expanded, (val) => {
   if (val) nextTick(drawGraph)
 })
+watch(graphCanvas, (canvas) => {
+  if (canvas && props.expanded) nextTick(drawGraph)
+})
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="expanded" class="graph-modal-backdrop" @click="emit('toggle')">
-      <div class="graph-modal" @click.stop>
-        <div class="graph-modal-header">
-          <span>Resource Analytics</span>
-          <button class="btn" @click="emit('toggle')">Close</button>
-        </div>
-        <canvas ref="graphCanvas" class="resource-graph-canvas"></canvas>
-        <div class="graph-legend">
-          <span class="legend-item energy">Energy</span>
-          <span class="legend-item food">Food</span>
-          <span class="legend-item water">Water</span>
-          <span class="legend-item minerals">Minerals</span>
-        </div>
+  <UModal v-model:open="open" title="Resource Analytics" :ui="{ width: 'sm:max-w-xl' }">
+    <template #body>
+      <canvas ref="graphCanvas" class="w-full h-[200px] block rounded max-md:h-[120px]"></canvas>
+      <div class="flex gap-3 mt-2 text-[0.55rem] uppercase tracking-[0.5px]">
+        <span class="font-bold text-amber-600">Energy</span>
+        <span class="font-bold text-green-600">Food</span>
+        <span class="font-bold text-blue-600">Water</span>
+        <span class="font-bold text-orange-600">Minerals</span>
       </div>
-    </div>
-  </Teleport>
+    </template>
+  </UModal>
 </template>
-
-<style scoped>
-.graph-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  background: rgba(0,0,0,0.4);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.graph-modal {
-  background: var(--surface);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-  width: 90%;
-  max-width: 600px;
-  padding: 16px;
-}
-.graph-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-.graph-modal-header span {
-  font-size: .8rem;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--text-bright);
-}
-.resource-graph-canvas {
-  width: 100%;
-  height: 200px;
-  display: block;
-  border-radius: 4px;
-}
-.graph-legend {
-  display: flex;
-  gap: 12px;
-  margin-top: 8px;
-  font-size: .55rem;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-}
-.legend-item { font-weight: bold }
-.legend-item.energy { color: var(--energy) }
-.legend-item.food { color: var(--food) }
-.legend-item.water { color: var(--water) }
-.legend-item.minerals { color: var(--minerals) }
-
-@media (max-width: 768px) {
-  .resource-graph-canvas { height: 120px }
-}
-</style>
