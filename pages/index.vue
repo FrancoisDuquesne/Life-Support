@@ -49,10 +49,10 @@ onMounted(() => {
     <HeaderBar :state="colony.state.value" :on-reset="colony.resetColony"
       :tick-speed="colony.tickSpeed.value" :on-set-speed="colony.setSpeed" :on-manual-tick="colony.manualTick" />
 
-    <div class="resource-strip-wrapper">
+    <div class="absolute top-12 left-0 right-[280px] z-10 flex gap-2 px-3 py-2 bg-white/78 backdrop-blur-md overflow-x-auto items-center border-b border-stone-300/50 max-md:right-0 max-md:px-2 max-md:gap-1">
       <ResourcePanel :state="colony.state.value" :deltas="colony.resourceDeltas.value" :history="colony.resourceHistory.value" />
       <PopulationBar :state="colony.state.value" />
-      <button class="btn graph-toggle-btn" @click="toggleResourceGraph">Analytics</button>
+      <UButton variant="soft" color="neutral" size="xs" class="whitespace-nowrap uppercase tracking-[1px] text-[0.65rem] shrink-0 max-md:hidden" @click="toggleResourceGraph">Analytics</UButton>
     </div>
 
     <div class="map-fullscreen">
@@ -65,13 +65,13 @@ onMounted(() => {
         :on-tile-click="onTileClick"
         :revealed-tiles="colony.revealedTiles.value"
       />
-      <div v-if="interaction.selectedBuilding.value" class="build-hint">
+      <div v-if="interaction.selectedBuilding.value" class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/92 backdrop-blur-lg border border-stone-300 rounded-md px-3.5 py-1.5 text-xs text-stone-700 whitespace-nowrap z-5 uppercase tracking-[1px] shadow-md">
         Click on the map to place {{ interaction.selectedBuilding.value.replace(/_/g, ' ') }}
-        <button class="btn btn-cancel" @click="interaction.clearSelection()">Cancel</button>
+        <UButton color="error" variant="ghost" size="xs" class="ml-2" @click="interaction.clearSelection()">Cancel</UButton>
       </div>
     </div>
 
-    <div class="sidebar desktop-sidebar">
+    <div class="absolute top-0 right-0 bottom-0 w-[280px] z-10 flex flex-col bg-white/88 backdrop-blur-md border-l border-stone-300/50 overflow-y-auto max-md:hidden">
       <BuildPanel
         :buildings="colony.buildingsInfo.value"
         :state="colony.state.value"
@@ -88,147 +88,30 @@ onMounted(() => {
       @toggle="toggleResourceGraph"
     />
 
-    <!-- Mobile bottom sheet -->
-    <div class="mobile-controls">
-      <button class="btn mobile-build-btn" @click="toggleBuildSheet">
+    <!-- Mobile bottom controls -->
+    <div class="hidden max-md:block">
+      <UButton
+        color="primary"
+        variant="soft"
+        size="lg"
+        class="fixed bottom-4 right-4 z-20 font-bold shadow-md"
+        @click="toggleBuildSheet"
+      >
         {{ showBuildSheet ? 'Close' : 'Build' }}
-      </button>
+      </UButton>
     </div>
-    <div :class="['mobile-sheet', { open: showBuildSheet }]">
-      <div class="mobile-sheet-tabs">
-        <button :class="['tab-btn', { active: true }]">Buildings</button>
+
+    <UDrawer v-model:open="showBuildSheet" direction="bottom">
+      <div class="max-h-[60vh] overflow-y-auto">
+        <BuildPanel
+          :buildings="colony.buildingsInfo.value"
+          :state="colony.state.value"
+          :selected-building="interaction.selectedBuilding.value"
+          :can-afford="colony.canAfford"
+          @select="(id) => { onSelectBuilding(id); showBuildSheet = false }"
+        />
+        <EventLog :log="colony.eventLog.value" />
       </div>
-      <BuildPanel
-        :buildings="colony.buildingsInfo.value"
-        :state="colony.state.value"
-        :selected-building="interaction.selectedBuilding.value"
-        :can-afford="colony.canAfford"
-        @select="(id) => { onSelectBuilding(id); showBuildSheet = false }"
-      />
-      <EventLog :log="colony.eventLog.value" />
-    </div>
+    </UDrawer>
   </div>
 </template>
-
-<style scoped>
-.resource-strip-wrapper {
-  position: absolute;
-  top: 48px;
-  left: 0;
-  right: 280px;
-  z-index: 10;
-  display: flex;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(255,255,255,0.78);
-  backdrop-filter: blur(12px);
-  overflow-x: auto;
-  align-items: center;
-  border-bottom: 1px solid rgba(214,207,196,0.5);
-}
-
-.graph-toggle-btn {
-  white-space: nowrap;
-  font-size: .65rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  padding: 4px 10px;
-  flex-shrink: 0;
-}
-
-.build-hint {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(255,255,255,.92);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 14px;
-  font-size: .75rem;
-  color: var(--text);
-  white-space: nowrap;
-  z-index: 5;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.1);
-}
-
-.desktop-sidebar {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 280px;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  background: rgba(255,255,255,0.88);
-  backdrop-filter: blur(12px);
-  border-left: 1px solid rgba(214,207,196,0.5);
-  overflow-y: auto;
-}
-
-.mobile-controls { display: none }
-.mobile-build-btn {
-  position: fixed;
-  bottom: 16px;
-  right: 16px;
-  z-index: 20;
-  padding: 10px 20px;
-  font-size: .85rem;
-  font-weight: bold;
-  background: rgba(37,99,235,.15);
-  border: 1px solid rgba(37,99,235,.3);
-  color: var(--water);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.1);
-}
-.mobile-sheet {
-  display: none;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 15;
-  background: rgba(255,255,255,.95);
-  backdrop-filter: blur(8px);
-  border-top: 1px solid var(--border);
-  border-radius: 12px 12px 0 0;
-  max-height: 60vh;
-  overflow-y: auto;
-  transform: translateY(100%);
-  transition: transform .3s ease;
-}
-.mobile-sheet.open { transform: translateY(0) }
-.mobile-sheet-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  border-bottom: 1px solid var(--border);
-}
-.tab-btn {
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: .7rem;
-}
-.tab-btn.active {
-  background: var(--surface);
-  color: var(--text-bright);
-  border-color: var(--water);
-}
-
-@media (max-width: 768px) {
-  .resource-strip-wrapper { right: 0; padding: 6px 8px; gap: 4px }
-  .desktop-sidebar { display: none }
-  .mobile-controls { display: block }
-  .mobile-sheet { display: block }
-  .graph-toggle-btn { display: none }
-}
-</style>

@@ -9,10 +9,12 @@
     "preview": "nuxt generate && npx -y serve .output/public"
   },
   "dependencies": {
+    "@nuxt/ui": "^4.4.0",
+    "tailwindcss": "^4.1.18",
     "vue": "^3.5.13"
   },
   "devDependencies": {
     "@vite-pwa/nuxt": "^1.1.1",
-    "nuxt": "^3.15.4"
+    "nuxt": "^4.3.1"
   }
 }

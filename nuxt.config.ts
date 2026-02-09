@@ -3,10 +3,9 @@ const base = process.env.NUXT_APP_BASE_URL || '/'
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
-  modules: ['@vite-pwa/nuxt'],
+  modules: ['@nuxt/ui', '@vite-pwa/nuxt'],
   css: [
-    '~/assets/css/variables.css',
-    '~/assets/css/global.css'
+    '~/assets/css/main.css'
   ],
   app: {
     baseURL: base,
@@ -42,5 +41,8 @@ export default defineNuxtConfig({
       globPatterns: ['**/*.{js,css,html,png,svg,ico}']
     }
   },
-  compatibilityDate: '2025-01-01'
+  colorMode: {
+    preference: 'light'
+  },
+  compatibilityDate: '2025-11-01'
 })

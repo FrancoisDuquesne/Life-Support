@@ -5,39 +5,12 @@ const props = defineProps({
 </script>
 
 <template>
-  <div class="pop-row">
-    <span class="pop-label">Colonists</span>
-    <span class="pop-value">
-      {{ state ? state.population : 0 }} / {{ state ? state.populationCapacity : 0 }}
-    </span>
-  </div>
+  <UCard class="min-w-[140px] max-md:min-w-0" :ui="{ body: 'p-1.5 sm:p-1.5' }">
+    <div class="flex items-center gap-2">
+      <span class="text-[0.6rem] uppercase tracking-[1.5px] text-stone-500">Colonists</span>
+      <span class="text-sm font-bold text-stone-900 whitespace-nowrap">
+        {{ state ? state.population : 0 }} / {{ state ? state.populationCapacity : 0 }}
+      </span>
+    </div>
+  </UCard>
 </template>
-
-<style scoped>
-.pop-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(247,244,239,0.45);
-  border: 1px solid rgba(214,207,196,0.5);
-  border-radius: 4px;
-  padding: 6px 10px;
-  min-width: 140px;
-}
-.pop-label {
-  font-size: .6rem;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--text-dim);
-}
-.pop-value {
-  font-size: .9rem;
-  font-weight: bold;
-  color: var(--text-bright);
-  white-space: nowrap;
-}
-
-@media (max-width: 768px) {
-  .pop-row { padding: 4px 6px }
-}
-</style>

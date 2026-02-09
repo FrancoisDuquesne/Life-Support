@@ -17,11 +17,14 @@ Deploy: upload `.output/public/*` to any static host.
 - **Game engine**: All game logic runs client-side in `utils/gameEngine.js`. Tick loop via `setInterval` in `useColony.js`.
 - **Persistence**: localStorage save/load in `utils/saveManager.js`. Auto-saves on every tick and build action.
 - **PWA**: Installable via `@vite-pwa/nuxt`. Service worker pre-caches all assets for offline play.
-- **Frontend**: Nuxt 3 SPA at project root. Vue 3 SFCs with `<script setup>`, scoped CSS. HTML5 Canvas hex map.
+- **UI framework**: NuxtUI v4 (`@nuxt/ui`) with Tailwind CSS v4. Components use `UButton`, `UCard`, `UBadge`, `UModal`, `UDrawer`, `UButtonGroup`.
+- **Frontend**: Nuxt 4 SPA at project root. Vue 3 SFCs with `<script setup>`, Tailwind utility classes. HTML5 Canvas hex map.
   - `utils/`: shared modules — `constants.js` (hex geometry, colors), `hex.js` (hex math), `drawing.js` (canvas rendering), `gameEngine.js` (game logic), `saveManager.js` (localStorage)
   - `composables/`: `useColony.js` (state + tick loop + save/load), `useCamera.js`, `useGridInteraction.js`
   - `components/`: `HeaderBar.vue`, `ResourcePanel.vue`, `PopulationBar.vue`, `GameMap.vue`, `BuildPanel.vue`, `ResourceGraph.vue`, `EventLog.vue`
   - `pages/index.vue`: root page wiring all components
+  - `assets/css/main.css`: Tailwind + NuxtUI imports, game color tokens, base layout styles
+  - `app.config.ts`: NuxtUI theme configuration (primary=blue, neutral=stone)
 
 ## Key Conventions
 
@@ -32,3 +35,5 @@ Deploy: upload `.output/public/*` to any static host.
 - Resource history is capped at 60 entries. Sparklines show the last 20.
 - Nuxt auto-imports: `ref`, `computed`, `watch`, `onMounted`, `onUnmounted`, `nextTick` are available without explicit imports in composables and `<script setup>`.
 - Game state is mutable internally (`colony` object in `useColony`), with reactive snapshots pushed to `state` ref via `toSnapshot()`.
+- Game color tokens (`--energy`, `--food`, `--water`, `--minerals`) are defined as CSS custom properties in `assets/css/main.css` and also available as Tailwind classes (amber-600, green-600, blue-600, orange-600).
+- `GameMap.vue` is 100% canvas — do not add NuxtUI components to it.
