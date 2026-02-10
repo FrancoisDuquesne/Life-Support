@@ -1,6 +1,6 @@
 <script setup>
 import { getTerrainAt, getTerrainBonusText } from '~/utils/terrain'
-import { GRID_WIDTH } from '~/utils/gameEngine'
+import { GRID_WIDTH, WASTE_OVERFLOW_PENALTY } from '~/utils/gameEngine'
 import { formatSignedFixed, roundTo } from '~/utils/formatting'
 
 const colony = useColony()
@@ -25,16 +25,31 @@ const wasteDelta = computed(() => {
   return roundTo(d.waste, 1)
 })
 
+const wasteOverflowActive = computed(
+  () => wasteInfo.value.waste > wasteInfo.value.capacity,
+)
+const wasteOverflowPenaltyPct = Math.round((1 - WASTE_OVERFLOW_PENALTY) * 100)
+
 function formatSignedOneDecimal(value) {
   return formatSignedFixed(value, 1)
 }
 
 const showBuildSheet = ref(false)
 const showResourceGraph = ref(false)
+const showCollapseModal = ref(false)
 const colonistsPanelRef = ref(null)
 
 const eventToast = ref(null)
 let toastTimer = null
+
+const collapseMessage = computed(() => {
+  const log = colony.eventLog.value || []
+  for (let i = log.length - 1; i >= 0; i--) {
+    const msg = log[i] && log[i].msg ? log[i].msg : ''
+    if (/COLLAPSED/i.test(msg)) return msg
+  }
+  return 'Life support has failed. The colony is no longer operational.'
+})
 
 watch(
   () => colony.eventLog.value.length,
@@ -51,6 +66,15 @@ watch(
           eventToast.value = null
         }, 4000)
       }
+    }
+  },
+)
+
+watch(
+  () => (colony.state.value ? colony.state.value.alive : null),
+  (alive, prevAlive) => {
+    if (prevAlive === true && alive === false) {
+      showCollapseModal.value = true
     }
   },
 )
@@ -186,6 +210,11 @@ function openCrewDetails() {
   }
 }
 
+function resetFromCollapseModal() {
+  showCollapseModal.value = false
+  colony.resetColony()
+}
+
 onMounted(() => {
   colony.init()
 })
@@ -208,7 +237,7 @@ onMounted(() => {
           class="bg-default border-default rounded-md border p-1.5 shadow-xs"
         >
           <div class="mb-1 flex items-center justify-between">
-            <h3 class="uppercase">Resources</h3>
+            <h4 class="uppercase">Resources</h4>
             <UButton
               color="primary"
               size="xs"
@@ -227,7 +256,7 @@ onMounted(() => {
           class="bg-default border-default rounded-md border p-1.5 shadow-xs"
         >
           <div class="mb-1 flex items-center justify-between">
-            <h3 class="uppercase">Colonists</h3>
+            <h4 class="uppercase">Colonists</h4>
             <UButton
               color="primary"
               size="xs"
@@ -246,30 +275,27 @@ onMounted(() => {
         <div
           class="bg-default border-default rounded-md border p-1.5 shadow-xs"
         >
-          <h3 class="uppercase">Waste</h3>
-          <div class="px-0.5">
-            <div class="mb-1 flex items-center justify-between gap-1.5">
-              <UBadge
-                color="warning"
-                variant="solid"
-                size="sm"
-                class="font-bold tabular-nums"
-                :label="`${wasteInfo.waste}/${wasteInfo.capacity}`"
-              />
-              <UBadge
-                :color="
+          <div class="mb-1 flex items-center justify-between gap-2">
+            <h4 class="uppercase">Waste</h4>
+            <div class="flex items-center gap-2 whitespace-nowrap tabular-nums">
+              <span class="text-highlighted text-sm font-bold">
+                {{ wasteInfo.waste }}/{{ wasteInfo.capacity }}
+              </span>
+              <span
+                :class="[
+                  'text-xs font-bold',
                   wasteDelta > 0
-                    ? 'error'
+                    ? 'text-error'
                     : wasteDelta < 0
-                      ? 'success'
-                      : 'neutral'
-                "
-                variant="subtle"
-                size="sm"
-                class="shrink-0 font-bold whitespace-nowrap tabular-nums"
-                :label="`${formatSignedOneDecimal(wasteDelta)}/t`"
-              />
+                      ? 'text-success'
+                      : 'text-muted',
+                ]"
+              >
+                {{ formatSignedOneDecimal(wasteDelta) }}/t
+              </span>
             </div>
+          </div>
+          <div class="px-0.5">
             <UProgress
               :model-value="wasteInfo.pct"
               :color="
@@ -279,8 +305,14 @@ onMounted(() => {
                     ? 'warning'
                     : 'success'
               "
-              size="xs"
+              size="sm"
             />
+            <p
+              v-if="wasteOverflowActive"
+              class="text-error mt-1 text-xs leading-tight font-medium"
+            >
+              Overflow active: -{{ wasteOverflowPenaltyPct }}% production
+            </p>
           </div>
         </div>
       </div>
@@ -304,6 +336,9 @@ onMounted(() => {
           <span class="text-highlighted tabular-nums">{{
             wasteInfo.waste
           }}</span>
+          <span v-if="wasteOverflowActive" class="text-error text-xs"
+            >-{{ wasteOverflowPenaltyPct }}%</span
+          >
         </div>
       </div>
       <div
@@ -412,7 +447,7 @@ onMounted(() => {
       <Transition name="toast">
         <UAlert
           v-if="eventToast"
-          class="fixed top-14 left-1/2 z-50 max-w-[90vw] -translate-x-1/2 shadow-lg"
+          class="fixed top-14 left-1/2 z-50 max-w-4xl -translate-x-1/2 shadow-lg"
           :color="eventToast.severity === 'danger' ? 'error' : 'warning'"
           variant="solid"
           :title="eventToast.msg"
@@ -427,6 +462,7 @@ onMounted(() => {
           <BuildPanel
             :buildings="colony.buildingsInfo.value"
             :state="colony.state.value"
+            :deltas="colony.resourceDeltas.value"
             :selected-building="interaction.selectedBuilding.value"
             :can-afford="colony.canAfford"
             @select="onSelectBuilding"
@@ -472,6 +508,7 @@ onMounted(() => {
           <BuildPanel
             :buildings="colony.buildingsInfo.value"
             :state="colony.state.value"
+            :deltas="colony.resourceDeltas.value"
             :selected-building="interaction.selectedBuilding.value"
             :can-afford="colony.canAfford"
             @select="
@@ -485,6 +522,38 @@ onMounted(() => {
         </div>
       </template>
     </UDrawer>
+    <UModal
+      v-model:open="showCollapseModal"
+      title="Colony Collapsed"
+      :dismissible="false"
+    >
+      <template #body>
+        <div class="flex flex-col items-center gap-3 text-center">
+          <UIcon
+            name="i-mdi-skull-outline"
+            class="text-error h-20 w-20"
+            aria-hidden="true"
+          />
+          <p class="text-muted text-sm">{{ collapseMessage }}</p>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="soft"
+            label="Close"
+            @click="showCollapseModal = false"
+          />
+          <UButton
+            color="error"
+            variant="solid"
+            label="Reset Colony"
+            @click="resetFromCollapseModal"
+          />
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>
 <style scoped>

@@ -177,7 +177,7 @@ defineExpose({ openDetail })
         />
         <UBadge
           color="neutral"
-          :variant="props.embedded ? 'solid' : 'subtle'"
+          :variant="props.embedded ? 'soft' : 'subtle'"
           size="sm"
           class="font-bold tabular-nums"
           :label="`${pop}/${cap}`"

@@ -22,7 +22,7 @@ watch(
       props.minimal ? 'gap-1 p-1.5' : 'gap-2 p-2',
     ]"
   >
-    <h3 v-if="!props.minimal" class="uppercase">Logs</h3>
+    <h4 v-if="!props.minimal" class="uppercase">Logs</h4>
 
     <div
       :class="[

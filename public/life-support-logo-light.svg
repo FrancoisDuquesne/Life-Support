@@ -1,0 +1,202 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1308" height="445" viewBox="226 297 1308 445">
+
+  <defs>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.0" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <linearGradient id="thickenFade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="black" stop-opacity="0"/>
+      <stop offset="12%"  stop-color="white" stop-opacity="0.15"/>
+      <stop offset="30%"  stop-color="white" stop-opacity="1"/>
+      <stop offset="70%"  stop-color="white" stop-opacity="1"/>
+      <stop offset="88%"  stop-color="white" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="black" stop-opacity="0"/>
+    </linearGradient>
+
+    <mask id="thickMask">
+      <rect x="0" y="0" width="1400" height="200" fill="url(#thickenFade)"/>
+    </mask>
+  </defs>
+
+  <g transform="translate(240,300)">
+    <!-- WARNING ICON -->
+    <g filter="url(#softGlow)" transform="translate(0,55) scale(1.12)">
+      <path
+        d="
+          M 120 10
+          A 18 18 0 0 1 135 20
+          L 225 185
+          A 18 18 0 0 1 210 212
+          L 30 212
+          A 18 18 0 0 1 15 185
+          L 105 20
+          A 18 18 0 0 1 120 10
+          Z
+        "
+        fill="none"
+        stroke="#FF6A00"
+        stroke-width="10"
+        stroke-linejoin="round"
+        stroke-linecap="round"
+      />
+      <line x1="120" y1="78" x2="120" y2="145"
+            stroke="#FF6A00" stroke-width="14" stroke-linecap="round"/>
+      <circle cx="120" cy="172" r="9" fill="#FF6A00"/>
+    </g>
+
+    <!-- TITLE AS VECTORS (NO TEXT) -->
+    <g fill="#FFFFFF" transform="translate(320,0)">
+
+      <!-- LIFE -->
+      <g transform="translate(0,0)">
+        <!-- L -->
+        <path d="M0 0 H18 V122 H100 V140 H0 Z"/>
+        <!-- I -->
+        <path d="M132 0 H150 V140 H132 Z"/>
+
+        <!-- F -->
+        <g transform="translate(214,0)">
+          <path d="M0 0 H18 V140 H0 Z"/>
+          <path d="M0 0 H100 V18 H0 Z"/>
+          <path d="M0 61 H82 V79 H0 Z"/>
+        </g>
+
+        <!-- E -->
+        <g transform="translate(346,0)">
+          <path d="M0 0 H18 V140 H0 Z"/>
+          <path d="M0 0 H100 V18 H0 Z"/>
+          <path d="M0 61 H86 V79 H0 Z"/>
+          <path d="M0 122 H100 V140 H0 Z"/>
+        </g>
+      </g>
+
+      <!-- SUPPORT -->
+      <g transform="translate(0,155)">
+
+        <!-- S -->
+        <g transform="translate(0,0)">
+          <path d="M0 0 H100 V18 H0 Z"/>
+          <path d="M0 0 H18 V66 H0 Z"/>
+          <path d="M0 61 H100 V79 H0 Z"/>
+          <path d="M82 74 H100 V140 H82 Z"/>
+          <path d="M0 122 H100 V140 H0 Z"/>
+        </g>
+
+        <!-- U -->
+        <g transform="translate(132,0)">
+          <path d="M0 0 H18 V140 H0 Z"/>
+          <path d="M82 0 H100 V140 H82 Z"/>
+          <path d="M0 122 H100 V140 H0 Z"/>
+        </g>
+
+        <!-- P -->
+        <g transform="translate(264,0)">
+          <path fill-rule="evenodd" d="
+            M0 0 H18 V140 H0 Z
+            M0 0 H100 V18 H0 Z
+            M82 0 H100 V79 H82 Z
+            M0 61 H100 V79 H0 Z
+            M18 18 H82 V61 H18 Z
+          "/>
+        </g>
+
+        <!-- P -->
+        <g transform="translate(396,0)">
+          <path fill-rule="evenodd" d="
+            M0 0 H18 V140 H0 Z
+            M0 0 H100 V18 H0 Z
+            M82 0 H100 V79 H82 Z
+            M0 61 H100 V79 H0 Z
+            M18 18 H82 V61 H18 Z
+          "/>
+        </g>
+
+        <!-- O -->
+        <g transform="translate(528,0)">
+          <path fill-rule="evenodd" d="
+            M0 0 H100 V140 H0 Z
+            M18 18 H82 V122 H18 Z
+          "/>
+        </g>
+
+        <!-- R -->
+        <g transform="translate(660,0)">
+          <path fill-rule="evenodd" d="
+            M0 0 H18 V140 H0 Z
+            M0 0 H100 V18 H0 Z
+            M82 0 H100 V79 H82 Z
+            M0 61 H100 V79 H0 Z
+            M18 18 H82 V61 H18 Z
+          "/>
+          <path d="M52 79 L100 140 H78 L38 97 Z"/>
+        </g>
+
+        <!-- T -->
+        <g transform="translate(792,0)">
+          <path d="M0 0 H100 V18 H0 Z"/>
+          <path d="M41 18 H59 V140 H41 Z"/>
+        </g>
+
+      </g>
+    </g>
+
+
+    <!-- ECG -->
+    <g transform="translate(0,330)" filter="url(#softGlow)">
+      <path id="ecgPath"
+        d="
+          M 0 40
+          L 170 40
+          L 190 40
+          L 200 36
+          L 210 44
+          L 220 38
+          L 230 40
+          L 248 40
+          L 262 12
+          L 275 98
+          L 292 26
+          L 310 58
+          L 326 40
+          L 340 44
+          L 354 36
+          L 368 42
+          L 382 40
+          L 930 40
+          L 950 40
+          L 962 34
+          L 974 46
+          L 986 37
+          L 998 43
+          L 1010 40
+          L 1030 40
+          L 1042 36
+          L 1054 44
+          L 1066 38
+          L 1078 42
+          L 1090 40
+          L 1120 40
+          L 1130 38
+          L 1140 42
+          L 1150 39
+          L 1160 41
+          L 1170 40
+          L 1280 40
+        "
+        fill="none"
+        stroke="#FF6A00"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+      <use href="#ecgPath" stroke-width="6"/>
+      <g mask="url(#thickMask)">
+        <use href="#ecgPath" stroke-width="12"/>
+      </g>
+    </g>
+  </g>
+</svg>

@@ -3,7 +3,23 @@ const base = process.env.NUXT_APP_BASE_URL || '/'
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
-  modules: ['@nuxt/ui', '@vite-pwa/nuxt'],
+  modules: ['@nuxt/ui', '@nuxt/fonts', '@vite-pwa/nuxt'],
+  fonts: {
+    families: [
+      {
+        name: 'Orbitron',
+        provider: 'google',
+        weights: [500, 700],
+        subsets: ['latin'],
+      },
+      {
+        name: 'Rajdhani',
+        provider: 'google',
+        weights: [400, 500, 600, 700],
+        subsets: ['latin'],
+      },
+    ],
+  },
   ui: {
     theme: {
       colors: [

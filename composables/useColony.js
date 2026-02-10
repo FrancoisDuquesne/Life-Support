@@ -19,6 +19,15 @@ import { generateTerrainMap, clearTerrainCache } from '~/utils/terrain'
 import { clearDrawingCaches } from '~/utils/drawing'
 
 export function useColony() {
+  const EMPTY_DELTAS = {
+    energy: 0,
+    food: 0,
+    water: 0,
+    minerals: 0,
+    oxygen: 0,
+    waste: 0,
+  }
+
   const state = ref(null)
   const buildingsInfo = ref([])
   const eventLog = ref([])
@@ -80,7 +89,14 @@ export function useColony() {
   }
 
   function generateTerrain(seed) {
-    terrainMap.value = generateTerrainMap(GRID_WIDTH, GRID_HEIGHT, seed)
+    try {
+      terrainMap.value = generateTerrainMap(GRID_WIDTH, GRID_HEIGHT, seed)
+      return true
+    } catch (error) {
+      console.error('Terrain generation failed:', error)
+      terrainMap.value = null
+      return false
+    }
   }
 
   function init() {
@@ -91,16 +107,25 @@ export function useColony() {
     if (saved) {
       colony = saved.state
       revealedTiles.value = saved.revealedTiles
-      generateTerrain(colony.terrainSeed)
+      const terrainOk = generateTerrain(colony.terrainSeed)
       state.value = toSnapshot(colony)
       pushHistory(state.value)
       addLog(colony.tickCount, 'Colony restored from save.')
+      if (!terrainOk) {
+        addLog(
+          colony.tickCount,
+          'WARNING: Terrain data unavailable, using fallback tiles.',
+        )
+      }
     } else {
       colony = createColonyState()
-      generateTerrain(colony.terrainSeed)
+      const terrainOk = generateTerrain(colony.terrainSeed)
       state.value = toSnapshot(colony)
       pushHistory(state.value)
       addLog(0, 'Colony connection established.')
+      if (!terrainOk) {
+        addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
+      }
       initRevealedMap(GRID_WIDTH, GRID_HEIGHT)
     }
 
@@ -156,12 +181,15 @@ export function useColony() {
     clearTerrainCache()
     clearDrawingCaches()
     colony = createColonyState()
-    generateTerrain(colony.terrainSeed)
+    const terrainOk = generateTerrain(colony.terrainSeed)
     state.value = toSnapshot(colony)
     eventLog.value = []
     resourceHistory.value = []
     pushHistory(state.value)
     addLog(0, 'Colony has been reset.')
+    if (!terrainOk) {
+      addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
+    }
     initRevealedMap(GRID_WIDTH, GRID_HEIGHT)
     startTickTimer()
   }
@@ -202,15 +230,7 @@ export function useColony() {
   }
 
   const resourceDeltas = computed(() => {
-    const deltas = {
-      energy: 0,
-      food: 0,
-      water: 0,
-      minerals: 0,
-      oxygen: 0,
-      waste: 0,
-    }
-    if (!state.value || !terrainMap.value) return deltas
+    if (!state.value || !terrainMap.value) return EMPTY_DELTAS
     return engineDeltas(state.value, terrainMap.value)
   })
 

@@ -21,9 +21,12 @@ function isActive(ms) {
   return props.tickSpeed === ms
 }
 
-function toggleDarkMode() {
-  colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
-}
+const darkModeEnabled = computed({
+  get: () => colorMode.value === 'dark',
+  set: (enabled) => {
+    colorMode.preference = enabled ? 'dark' : 'light'
+  },
+})
 </script>
 
 <template>
@@ -31,17 +34,17 @@ function toggleDarkMode() {
     <header
       class="border-default/70 glass-panel z-20 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5"
     >
-      <div class="flex items-center gap-2">
-        <UButton
-          color="neutral"
-          icon="i-mdi-menu"
-          variant="soft"
-          @click="showSettings = true"
-        />
-        <h1 class="text-primary uppercase">
-          {{ state ? state.name : 'Life Support' }}
-        </h1>
-      </div>
+      <img
+        src="/life-support-logo.svg"
+        alt="Life Support"
+        class="h-7 w-auto shrink-0 sm:h-8 md:h-9 dark:hidden"
+      />
+      <img
+        src="/life-support-logo-light.svg"
+        alt=""
+        aria-hidden="true"
+        class="hidden h-7 w-auto shrink-0 sm:h-8 md:h-9 dark:block"
+      />
       <div class="flex flex-wrap items-center gap-3">
         <span class="text-muted">T{{ state ? state.tickCount : 0 }}</span>
         <UFieldGroup>
@@ -67,8 +70,14 @@ function toggleDarkMode() {
           size="lg"
           :label="state && state.alive ? 'Online' : 'Collapsed'"
         />
-
         <UButton color="error" variant="soft" label="Reset" @click="onReset" />
+        <USeparator orientation="vertical" class="mx-2 h-5 opacity-50" />
+        <UButton
+          color="neutral"
+          icon="i-mdi-menu"
+          variant="soft"
+          @click="showSettings = true"
+        />
       </div>
     </header>
 
@@ -76,13 +85,7 @@ function toggleDarkMode() {
       <template #body>
         <div class="flex items-center justify-between gap-3">
           <span class="text-sm">Dark mode</span>
-          <UButton
-            color="neutral"
-            variant="soft"
-            size="sm"
-            :label="colorMode.value === 'dark' ? 'Disable' : 'Enable'"
-            @click="toggleDarkMode"
-          />
+          <USwitch v-model="darkModeEnabled" />
         </div>
       </template>
     </UModal>

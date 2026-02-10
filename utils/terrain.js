@@ -85,6 +85,20 @@ export const HAZARD_TYPES = {
 
 let terrainMapCache = null
 
+// Biome selection thresholds based on combined terrain noise.
+const BIOME_THRESHOLDS = {
+  CRATER_MAX: 0.15,
+  VOLCANIC_MAX: 0.3,
+  HIGHLANDS_MAX: 0.45,
+  PLAINS_MAX: 0.8,
+}
+
+// Spawn thresholds for secondary features.
+const FEATURE_THRESHOLDS = {
+  DEPOSIT_MIN: 0.92,
+  HAZARD_MIN: 0.95,
+}
+
 /**
  * Generate (or return cached) terrain map for the given grid dimensions and seed.
  * Returns a flat Array of { terrain, deposit, hazard } objects, indexed by row * gw + col.
@@ -110,13 +124,13 @@ export function generateTerrainMap(gw, gh, seed) {
       const combined = n1 * 0.6 + n2 * 0.4
 
       let terrain
-      if (combined < 0.15) {
+      if (combined < BIOME_THRESHOLDS.CRATER_MAX) {
         terrain = TERRAIN_TYPES.CRATER
-      } else if (combined < 0.3) {
+      } else if (combined < BIOME_THRESHOLDS.VOLCANIC_MAX) {
         terrain = TERRAIN_TYPES.VOLCANIC
-      } else if (combined < 0.45) {
+      } else if (combined < BIOME_THRESHOLDS.HIGHLANDS_MAX) {
         terrain = TERRAIN_TYPES.HIGHLANDS
-      } else if (combined < 0.8) {
+      } else if (combined < BIOME_THRESHOLDS.PLAINS_MAX) {
         terrain = TERRAIN_TYPES.PLAINS
       } else {
         terrain = TERRAIN_TYPES.ICE_FIELD
@@ -125,7 +139,7 @@ export function generateTerrainMap(gw, gh, seed) {
       // Resource deposits — biased by terrain, ~8% of tiles
       let deposit = null
       const depositNoise = valueNoise(x, y, seed + 5000, 3)
-      if (depositNoise > 0.92) {
+      if (depositNoise > FEATURE_THRESHOLDS.DEPOSIT_MIN) {
         if (
           terrain === TERRAIN_TYPES.HIGHLANDS ||
           terrain === TERRAIN_TYPES.PLAINS
@@ -143,7 +157,7 @@ export function generateTerrainMap(gw, gh, seed) {
       // Hazard zones — biased by terrain, ~5% of tiles
       let hazard = null
       const hazardNoise = valueNoise(x, y, seed + 9000, 3)
-      if (hazardNoise > 0.95) {
+      if (hazardNoise > FEATURE_THRESHOLDS.HAZARD_MIN) {
         if (
           terrain === TERRAIN_TYPES.CRATER ||
           terrain === TERRAIN_TYPES.PLAINS

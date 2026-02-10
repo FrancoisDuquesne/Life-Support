@@ -26,7 +26,8 @@
 
 /* Base body styles */
 body {
-  font-family: 'Courier New', monospace;
+  font-family:
+    'Rajdhani', 'Avenir Next', 'Segoe UI', 'Helvetica Neue', sans-serif;
   min-height: 100vh;
   line-height: 1.5;
   overflow: hidden;
@@ -37,6 +38,38 @@ body {
     #bfdbfe 100%
   );
   color: var(--ui-text);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: 'Orbitron', 'Rajdhani', 'Avenir Next', 'Segoe UI', sans-serif;
+  @apply m-0 leading-tight tracking-wider uppercase;
+  color: color-mix(in oklab, var(--ui-text-highlighted) 88%, #93c5fd 12%);
+  text-shadow: 0 0 12px
+    color-mix(in oklab, var(--ui-primary, #2563eb) 22%, transparent);
+}
+
+.uppercase {
+  font-family: 'Orbitron', 'Rajdhani', 'Avenir Next', 'Segoe UI', sans-serif;
+  @apply font-light tracking-wider uppercase;
+}
+
+h1 {
+  @apply text-xl font-extrabold;
+}
+
+h2 {
+  @apply text-lg font-bold;
+}
+
+h3 {
+  @apply text-base font-semibold;
+}
+
+h4 {
+  @apply text-sm font-medium;
 }
 
 .app-layout {
@@ -76,12 +109,26 @@ body {
 }
 
 /* Loading state */
-#__nuxt:empty::after {
-  content: 'Connecting to colony...';
+#__nuxt:empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.85rem;
   height: 100vh;
+}
+
+#__nuxt:empty::before {
+  content: '';
+  width: clamp(112px, 24vw, 176px);
+  max-width: 42vmin;
+  aspect-ratio: 1 / 1;
+  background: url('/life-support-logo.svg') center / contain no-repeat;
+  opacity: 0.9;
+}
+
+#__nuxt:empty::after {
+  content: 'Connecting to colony...';
   color: var(--ui-text-muted);
   font-size: 0.9rem;
 }

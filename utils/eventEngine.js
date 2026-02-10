@@ -3,13 +3,21 @@ import { mulberry32 } from '~/utils/hex'
 
 // --- Event Type Definitions ---
 
+export const EVENT_PROBABILITIES = {
+  DUST_STORM: 0.015,
+  METEOR_STRIKE: 0.008,
+  SOLAR_FLARE: 0.01,
+  EQUIPMENT_FAILURE: 0.015,
+  RESOURCE_DISCOVERY: 0.02,
+}
+
 export const EVENT_TYPES = {
   DUST_STORM: {
     id: 'DUST_STORM',
     name: 'Dust Storm',
     severity: 'warning',
     duration: 5,
-    probability: 0.015,
+    probability: EVENT_PROBABILITIES.DUST_STORM,
     minTick: 5,
     description: 'Reduces solar panel output by 50%',
   },
@@ -18,7 +26,7 @@ export const EVENT_TYPES = {
     name: 'Meteor Strike',
     severity: 'danger',
     duration: 0, // instant
-    probability: 0.008,
+    probability: EVENT_PROBABILITIES.METEOR_STRIKE,
     minTick: 10,
     description: 'Impacts a random tile, may destroy a building',
   },
@@ -27,7 +35,7 @@ export const EVENT_TYPES = {
     name: 'Solar Flare',
     severity: 'warning',
     duration: 3,
-    probability: 0.01,
+    probability: EVENT_PROBABILITIES.SOLAR_FLARE,
     minTick: 8,
     description: 'Boosts energy +30% but blocks population growth',
   },
@@ -36,7 +44,7 @@ export const EVENT_TYPES = {
     name: 'Equipment Failure',
     severity: 'warning',
     duration: 0, // instant — disables building for 3 ticks
-    probability: 0.015,
+    probability: EVENT_PROBABILITIES.EQUIPMENT_FAILURE,
     minTick: 5,
     minBuildings: 3,
     description: 'Disables a random building for 3 ticks',
@@ -46,7 +54,7 @@ export const EVENT_TYPES = {
     name: 'Resource Discovery',
     severity: 'normal',
     duration: 0, // instant
-    probability: 0.02,
+    probability: EVENT_PROBABILITIES.RESOURCE_DISCOVERY,
     minTick: 3,
     description: 'Reveals frontier tiles and may create a resource deposit',
   },

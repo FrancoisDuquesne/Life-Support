@@ -45,12 +45,13 @@ const WASTE_PER_COLONIST = 0.2
 // Waste reduced per active recycling center per tick
 const WASTE_REDUCTION_PER_RECYCLER = 3
 // Production penalty when waste overflows
-const WASTE_OVERFLOW_PENALTY = 0.75
+export const WASTE_OVERFLOW_PENALTY = 0.75
 
 export const BUILDING_TYPES = [
   {
     id: 'SOLAR_PANEL',
     name: 'Solar Panel',
+    maxHp: 100,
     description: 'Generates energy from sunlight',
     cost: { minerals: 10 },
     produces: { energy: 5 },
@@ -59,6 +60,7 @@ export const BUILDING_TYPES = [
   {
     id: 'HYDROPONIC_FARM',
     name: 'Hydroponic Farm',
+    maxHp: 100,
     description: 'Grows food using water and energy',
     cost: { minerals: 15, energy: 5 },
     produces: { food: 3 },
@@ -67,6 +69,7 @@ export const BUILDING_TYPES = [
   {
     id: 'WATER_EXTRACTOR',
     name: 'Water Extractor',
+    maxHp: 100,
     description: 'Extracts water from the Martian ice',
     cost: { minerals: 12 },
     produces: { water: 4 },
@@ -75,6 +78,7 @@ export const BUILDING_TYPES = [
   {
     id: 'MINE',
     name: 'Mining Facility',
+    maxHp: 100,
     description: 'Extracts minerals from the ground',
     cost: { minerals: 8 },
     produces: { minerals: 2 },
@@ -83,6 +87,7 @@ export const BUILDING_TYPES = [
   {
     id: 'HABITAT',
     name: 'Living Habitat',
+    maxHp: 100,
     description: 'Houses colonists, increases population capacity by 5',
     cost: { minerals: 25, water: 10 },
     produces: {},
@@ -91,6 +96,7 @@ export const BUILDING_TYPES = [
   {
     id: 'OXYGEN_GENERATOR',
     name: 'Oxygen Generator',
+    maxHp: 100,
     description: 'Electrolyzes water to produce breathable oxygen',
     cost: { minerals: 15, energy: 10 },
     produces: { oxygen: 4 },
@@ -99,6 +105,7 @@ export const BUILDING_TYPES = [
   {
     id: 'RTG',
     name: 'RTG Power Unit',
+    maxHp: 100,
     description:
       'Radioisotope generator — steady power, unaffected by dust storms',
     cost: { minerals: 20 },
@@ -108,6 +115,7 @@ export const BUILDING_TYPES = [
   {
     id: 'RECYCLING_CENTER',
     name: 'Recycling Center',
+    maxHp: 100,
     description: 'Processes colony waste, reducing buildup by 3/tick',
     cost: { minerals: 20, energy: 10 },
     produces: {},
@@ -117,6 +125,7 @@ export const BUILDING_TYPES = [
   {
     id: 'REPAIR_STATION',
     name: 'Repair Station',
+    maxHp: 100,
     description: 'Automated drones that maintain colony infrastructure',
     cost: { minerals: 25, energy: 15 },
     produces: {},
@@ -340,6 +349,18 @@ export function processTick(state, terrainMap, revealedTiles) {
     for (const msg of colonistResult.messages) events += msg + ' '
   }
 
+  // Hard fail when no humans remain.
+  if (state.colonists && state.colonists.length === 0) {
+    state.alive = false
+    events += 'COLONY COLLAPSED: No colonists remaining! '
+    return {
+      tick: state.tickCount,
+      events,
+      colonyState: toSnapshot(state),
+      newRevealedTiles,
+    }
+  }
+
   // 7. Compute role bonuses + colony efficiency for production
   const roleBonuses = computeRoleBonuses(state)
   const colonyEff = computeColonyEfficiency(state.colonists)
@@ -402,14 +423,15 @@ export function processTick(state, terrainMap, revealedTiles) {
   // 11. Death checks
   events += `Tick ${state.tickCount} processed. `
 
+  if (state.resources.food <= 0) {
+    state.resources.food = 0
+    events += 'WARNING: Food shortage — colonists are starving! '
+  }
+
   if (state.resources.oxygen <= 0) {
     state.alive = false
     state.resources.oxygen = Math.max(0, state.resources.oxygen)
     events += 'COLONY COLLAPSED: Suffocation! '
-  } else if (state.resources.food <= 0) {
-    state.alive = false
-    state.resources.food = Math.max(0, state.resources.food)
-    events += 'COLONY COLLAPSED: Starvation! '
   } else if (state.resources.water <= 0) {
     state.alive = false
     state.resources.water = Math.max(0, state.resources.water)
@@ -496,8 +518,8 @@ export function buildAt(state, type, x, y, terrainMap) {
     x,
     y,
     disabledUntilTick: 0,
-    hp: 100,
-    maxHp: 100,
+    hp: bType.maxHp,
+    maxHp: bType.maxHp,
   }
   state.placedBuildings.push(placed)
   state.occupiedCells.add(cellKey(x, y))
@@ -580,6 +602,7 @@ export function getBuildingsInfo() {
     cost: { ...b.cost },
     produces: { ...b.produces },
     consumes: { ...b.consumes },
+    maxHp: b.maxHp,
     special: b.special || null,
   }))
 }

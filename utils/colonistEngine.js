@@ -64,7 +64,7 @@ export const FIRST_NAMES = [
   'Maren',
   'Silas',
   'Esme',
-  'Kai',
+  'Milo',
   'Lila',
   'Arlo',
   'Sage',

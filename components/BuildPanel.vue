@@ -1,10 +1,11 @@
 <script setup>
 import { drawBuilding } from '~/utils/drawing'
-import { clampPercent, formatCompact, worstDeficit } from '~/utils/formatting'
+import { clampPercent, formatCompact } from '~/utils/formatting'
 
 const props = defineProps({
   buildings: Array,
   state: Object,
+  deltas: Object,
   selectedBuilding: String,
   canAfford: Function,
 })
@@ -60,10 +61,32 @@ function getResourceVal(res) {
   return props.state.resources[res] || 0
 }
 
-function getMissingResource(cost) {
-  const d = worstDeficit(cost, props.state && props.state.resources)
-  if (!d) return ''
-  return `${formatCompact(d.deficit)} ${d.key.slice(0, 3).toUpperCase()}`
+function getResourceDelta(res) {
+  if (!props.deltas) return 0
+  return props.deltas[res] || 0
+}
+
+function turnsUntilAffordable(cost) {
+  if (!cost || props.canAfford(cost)) return 0
+
+  let maxTurns = 0
+  for (const [res, amount] of Object.entries(cost)) {
+    const missing = Math.max(0, amount - getResourceVal(res))
+    if (missing <= 0) continue
+
+    const delta = getResourceDelta(res)
+    if (delta <= 0) return null
+
+    maxTurns = Math.max(maxTurns, Math.ceil(missing / delta))
+  }
+
+  return maxTurns
+}
+
+function availabilityLabel(cost) {
+  const turns = turnsUntilAffordable(cost)
+  if (turns === null) return '--t'
+  return `${turns}t`
 }
 
 function costBarPct(res, amount) {
@@ -81,7 +104,7 @@ function selectBuilding(id) {
 </script>
 <template>
   <div class="flex shrink-0 flex-col gap-2 p-2">
-    <h3 class="uppercase">Buildings</h3>
+    <h4 class="uppercase">Buildings</h4>
 
     <div class="flex flex-col gap-1.5">
       <UButton
@@ -113,9 +136,10 @@ function selectBuilding(id) {
               <div class="text-muted mt-px">{{ b.description }}</div>
             </div>
             <UBadge
-              :color="canAfford(b.cost) ? 'success' : 'error'"
+              v-if="!canAfford(b.cost)"
+              color="warning"
               variant="subtle"
-              :label="canAfford(b.cost) ? 'Ready' : 'Need'"
+              :label="availabilityLabel(b.cost)"
             />
           </div>
 
@@ -176,15 +200,6 @@ function selectBuilding(id) {
               color="primary"
               variant="subtle"
               :label="`x${getCount(b.id)}`"
-            />
-            <UBadge
-              :color="canAfford(b.cost) ? 'success' : 'error'"
-              variant="subtle"
-              :label="
-                canAfford(b.cost)
-                  ? 'READY'
-                  : `NEED ${getMissingResource(b.cost)}`
-              "
             />
           </div>
 
