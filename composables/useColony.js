@@ -1,16 +1,33 @@
-import { hexNeighbors, hexDistance, hexesInRadius, mulberry32 } from '~/utils/hex'
+import {
+  hexNeighbors,
+  hexDistance,
+  hexesInRadius,
+  mulberry32,
+} from '~/utils/hex'
 import {
   createColonyState,
   processTick as engineTick,
   buildAt as engineBuild,
   toSnapshot,
   getBuildingsInfo as engineBuildingsInfo,
+  computeResourceDeltas as engineDeltas,
   GRID_WIDTH,
-  GRID_HEIGHT
+  GRID_HEIGHT,
 } from '~/utils/gameEngine'
 import { saveGame, loadGame, clearSave } from '~/utils/saveManager'
+import { generateTerrainMap, clearTerrainCache } from '~/utils/terrain'
+import { clearDrawingCaches } from '~/utils/drawing'
 
 export function useColony() {
+  const EMPTY_DELTAS = {
+    energy: 0,
+    food: 0,
+    water: 0,
+    minerals: 0,
+    oxygen: 0,
+    waste: 0,
+  }
+
   const state = ref(null)
   const buildingsInfo = ref([])
   const eventLog = ref([])
@@ -23,6 +40,9 @@ export function useColony() {
 
   // Revealed tiles state
   const revealedTiles = ref(new Set())
+
+  // Terrain map (generated from seed, shared with GameMap)
+  const terrainMap = ref(null)
 
   function initRevealedMap(gw, gh) {
     const centerCol = Math.floor(gw / 2)
@@ -68,6 +88,17 @@ export function useColony() {
     revealedTiles.value = newSet
   }
 
+  function generateTerrain(seed) {
+    try {
+      terrainMap.value = generateTerrainMap(GRID_WIDTH, GRID_HEIGHT, seed)
+      return true
+    } catch (error) {
+      console.error('Terrain generation failed:', error)
+      terrainMap.value = null
+      return false
+    }
+  }
+
   function init() {
     buildingsInfo.value = engineBuildingsInfo()
 
@@ -76,14 +107,25 @@ export function useColony() {
     if (saved) {
       colony = saved.state
       revealedTiles.value = saved.revealedTiles
+      const terrainOk = generateTerrain(colony.terrainSeed)
       state.value = toSnapshot(colony)
       pushHistory(state.value)
       addLog(colony.tickCount, 'Colony restored from save.')
+      if (!terrainOk) {
+        addLog(
+          colony.tickCount,
+          'WARNING: Terrain data unavailable, using fallback tiles.',
+        )
+      }
     } else {
       colony = createColonyState()
+      const terrainOk = generateTerrain(colony.terrainSeed)
       state.value = toSnapshot(colony)
       pushHistory(state.value)
       addLog(0, 'Colony connection established.')
+      if (!terrainOk) {
+        addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
+      }
       initRevealedMap(GRID_WIDTH, GRID_HEIGHT)
     }
 
@@ -106,16 +148,26 @@ export function useColony() {
 
   function doTick() {
     if (!colony) return
-    const result = engineTick(colony)
+    const result = engineTick(colony, terrainMap.value, revealedTiles.value)
     state.value = result.colonyState
     pushHistory(result.colonyState)
     if (result.events) addLog(result.tick, result.events)
+
+    // Apply discovered tiles from events
+    if (result.newRevealedTiles && result.newRevealedTiles.length > 0) {
+      const newSet = new Set(revealedTiles.value)
+      for (const key of result.newRevealedTiles) {
+        newSet.add(key)
+      }
+      revealedTiles.value = newSet
+    }
+
     saveGame(colony, revealedTiles.value)
   }
 
   function buildAt(type, x, y) {
     if (!colony) return { success: false, message: 'Colony not initialized' }
-    const result = engineBuild(colony, type, x, y)
+    const result = engineBuild(colony, type, x, y, terrainMap.value)
     state.value = result.colonyState
     addLog(state.value ? state.value.tickCount : null, result.message)
     if (result.success) {
@@ -126,12 +178,18 @@ export function useColony() {
 
   function resetColony() {
     clearSave()
+    clearTerrainCache()
+    clearDrawingCaches()
     colony = createColonyState()
+    const terrainOk = generateTerrain(colony.terrainSeed)
     state.value = toSnapshot(colony)
     eventLog.value = []
     resourceHistory.value = []
     pushHistory(state.value)
     addLog(0, 'Colony has been reset.')
+    if (!terrainOk) {
+      addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
+    }
     initRevealedMap(GRID_WIDTH, GRID_HEIGHT)
     startTickTimer()
   }
@@ -143,7 +201,8 @@ export function useColony() {
       energy: cs.resources.energy || 0,
       food: cs.resources.food || 0,
       water: cs.resources.water || 0,
-      minerals: cs.resources.minerals || 0
+      minerals: cs.resources.minerals || 0,
+      oxygen: cs.resources.oxygen || 0,
     })
     if (resourceHistory.value.length > MAX_HISTORY) {
       resourceHistory.value = resourceHistory.value.slice(-MAX_HISTORY)
@@ -152,8 +211,10 @@ export function useColony() {
 
   function addLog(tick, msg) {
     let severity = 'normal'
-    if (/COLLAPSED|DEAD/i.test(msg)) severity = 'collapse'
-    else if (/WARNING|shortage/i.test(msg)) severity = 'warning'
+    if (/COLLAPSED|DEAD|has died/i.test(msg)) severity = 'collapse'
+    else if (/METEOR|disrepair/i.test(msg)) severity = 'danger'
+    else if (/WARNING|shortage|STORM|FLARE|FAILURE|Waste/i.test(msg))
+      severity = 'warning'
     eventLog.value.push({ tick, msg, severity, id: Date.now() + Math.random() })
     if (eventLog.value.length > 200) {
       eventLog.value = eventLog.value.slice(-200)
@@ -169,27 +230,15 @@ export function useColony() {
   }
 
   const resourceDeltas = computed(() => {
-    const deltas = { energy: 0, food: 0, water: 0, minerals: 0 }
-    if (!state.value || !buildingsInfo.value) return deltas
+    if (!state.value || !terrainMap.value) return EMPTY_DELTAS
+    return engineDeltas(state.value, terrainMap.value)
+  })
 
-    buildingsInfo.value.forEach(b => {
-      const key = b.id.toLowerCase()
-      const count = (state.value.buildings && state.value.buildings[key]) || 0
-      if (count > 0) {
-        for (const r in b.produces) {
-          deltas[r] = (deltas[r] || 0) + b.produces[r] * count
-        }
-        for (const r in b.consumes) {
-          deltas[r] = (deltas[r] || 0) - b.consumes[r] * count
-        }
-      }
-    })
-
-    const pop = state.value.population || 0
-    deltas.food -= Math.floor(pop / 2)
-    deltas.water -= Math.floor(pop / 3)
-
-    return deltas
+  const activeEvents = computed(() => {
+    if (!state.value || !state.value.activeEvents) return []
+    return state.value.activeEvents.filter(
+      (e) => e.endTick >= (state.value.tickCount || 0),
+    )
   })
 
   const gridWidth = computed(() => GRID_WIDTH)
@@ -217,6 +266,8 @@ export function useColony() {
     resourceDeltas,
     resourceHistory,
     revealedTiles,
+    terrainMap,
+    activeEvents,
     tickSpeed,
     init,
     buildAt,
@@ -224,6 +275,6 @@ export function useColony() {
     canAfford,
     revealAround,
     manualTick,
-    setSpeed
+    setSpeed,
   }
 }

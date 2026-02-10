@@ -23,7 +23,11 @@ export function useCamera(gridWidth, gridHeight) {
   function gridToScreen(gx, gy) {
     const z = zoom.value
     const sx = gx * HORIZ * z + (HEX_W / 2) * z + offsetX.value
-    const sy = gy * VERT * z + (gx & 1) * (VERT / 2) * z + (HEX_H / 2) * z + offsetY.value
+    const sy =
+      gy * VERT * z +
+      (gx & 1) * (VERT / 2) * z +
+      (HEX_H / 2) * z +
+      offsetY.value
     return { sx, sy }
   }
 
@@ -32,8 +36,8 @@ export function useCamera(gridWidth, gridHeight) {
     const wx = (sx - offsetX.value) / z - HEX_W / 2
     const wy = (sy - offsetY.value) / z - HEX_H / 2
 
-    const q = (2 / 3 * wx) / HEX_SIZE
-    const r = (-1 / 3 * wx + Math.sqrt(3) / 3 * wy) / HEX_SIZE
+    const q = ((2 / 3) * wx) / HEX_SIZE
+    const r = ((-1 / 3) * wx + (Math.sqrt(3) / 3) * wy) / HEX_SIZE
     const s = -q - r
 
     let rq = Math.round(q)
@@ -83,6 +87,6 @@ export function useCamera(gridWidth, gridHeight) {
     HORIZ,
     VERT,
     MIN_ZOOM,
-    MAX_ZOOM
+    MAX_ZOOM,
   }
 }

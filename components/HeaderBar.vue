@@ -4,46 +4,90 @@ const props = defineProps({
   onReset: Function,
   tickSpeed: Number,
   onSetSpeed: Function,
-  onManualTick: Function
+  onManualTick: Function,
 })
+
+const showSettings = ref(false)
+const colorMode = useColorMode()
 
 const SPEEDS = [
   { label: '1x', ms: 5000 },
   { label: '2x', ms: 2500 },
   { label: '5x', ms: 1000 },
-  { label: '10x', ms: 500 }
+  { label: '10x', ms: 500 },
 ]
 
 function isActive(ms) {
   return props.tickSpeed === ms
 }
+
+const darkModeEnabled = computed({
+  get: () => colorMode.value === 'dark',
+  set: (enabled) => {
+    colorMode.preference = enabled ? 'dark' : 'light'
+  },
+})
 </script>
 
 <template>
-  <header class="absolute top-0 left-0 right-[280px] z-10 flex items-center justify-between flex-wrap gap-3 px-4 py-2.5 border-b border-stone-300/50 bg-black/50 backdrop-blur-md max-md:right-0">
-    <h1 class="text-base text-white/90 tracking-[2px] uppercase">{{ state ? state.name : 'Life Support' }}</h1>
-    <div class="flex items-center gap-3 flex-wrap">
-      <span class="text-white/55 text-xs">T{{ state ? state.tickCount : 0 }}</span>
-      <UButtonGroup size="xs">
+  <div>
+    <header
+      class="border-default/70 glass-panel z-20 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5"
+    >
+      <img
+        src="/life-support-logo.svg"
+        alt="Life Support"
+        class="h-7 w-auto shrink-0 sm:h-8 md:h-9 dark:hidden"
+      />
+      <img
+        src="/life-support-logo-light.svg"
+        alt=""
+        aria-hidden="true"
+        class="hidden h-7 w-auto shrink-0 sm:h-8 md:h-9 dark:block"
+      />
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="text-muted">T{{ state ? state.tickCount : 0 }}</span>
+        <UFieldGroup>
+          <UButton
+            v-for="s in SPEEDS"
+            :key="s.ms"
+            :variant="isActive(s.ms) ? 'solid' : 'soft'"
+            :color="isActive(s.ms) ? 'primary' : 'neutral'"
+            :label="s.label"
+            @click="onSetSpeed(s.ms)"
+          />
+          <UButton
+            variant="soft"
+            color="neutral"
+            label="Next"
+            icon="i-mdi-chevron-right"
+            @click="onManualTick"
+          />
+        </UFieldGroup>
+        <UBadge
+          :color="state && state.alive ? 'success' : 'error'"
+          variant="subtle"
+          size="lg"
+          :label="state && state.alive ? 'Online' : 'Collapsed'"
+        />
+        <UButton color="error" variant="soft" label="Reset" @click="onReset" />
+        <USeparator orientation="vertical" class="mx-2 h-5 opacity-50" />
         <UButton
-          v-for="s in SPEEDS"
-          :key="s.ms"
-          :variant="isActive(s.ms) ? 'solid' : 'ghost'"
-          :color="isActive(s.ms) ? 'primary' : 'neutral'"
-          class="!text-[0.65rem]"
-          @click="onSetSpeed(s.ms)"
-        >{{ s.label }}</UButton>
-        <UButton variant="ghost" color="neutral" class="!text-[0.65rem]" @click="onManualTick">Next</UButton>
-      </UButtonGroup>
-      <UBadge
-        :color="state && state.alive ? 'success' : 'error'"
-        variant="subtle"
-        size="sm"
-        class="uppercase tracking-wide font-bold"
-      >
-        {{ state && state.alive ? 'Online' : 'Collapsed' }}
-      </UBadge>
-      <UButton color="error" variant="soft" size="xs" @click="onReset">Reset</UButton>
-    </div>
-  </header>
+          color="neutral"
+          icon="i-mdi-menu"
+          variant="soft"
+          @click="showSettings = true"
+        />
+      </div>
+    </header>
+
+    <UModal v-model:open="showSettings" title="Settings">
+      <template #body>
+        <div class="flex items-center justify-between gap-3">
+          <span class="text-sm">Dark mode</span>
+          <USwitch v-model="darkModeEnabled" />
+        </div>
+      </template>
+    </UModal>
+  </div>
 </template>

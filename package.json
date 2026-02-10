@@ -6,7 +6,9 @@
     "dev": "nuxt dev",
     "build": "nuxt generate",
     "deploy": "nuxt generate",
-    "preview": "nuxt generate && npx -y serve .output/public"
+    "preview": "nuxt generate && npx -y serve .output/public",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@nuxt/ui": "^4.4.0",
@@ -15,6 +17,8 @@
   },
   "devDependencies": {
     "@vite-pwa/nuxt": "^1.1.1",
-    "nuxt": "^4.3.1"
+    "nuxt": "^4.3.1",
+    "prettier": "^3.8.1",
+    "prettier-plugin-tailwindcss": "^0.7.2"
   }
 }

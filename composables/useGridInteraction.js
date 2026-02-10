@@ -21,7 +21,7 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
     if (!touch) return { x: 0, y: 0 }
     return {
       x: touch.clientX - rect.left,
-      y: touch.clientY - rect.top
+      y: touch.clientY - rect.top,
     }
   }
 
@@ -38,7 +38,7 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
     const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2
     return {
       x: cx - rect.left,
-      y: cy - rect.top
+      y: cy - rect.top,
     }
   }
 
@@ -66,11 +66,16 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
       if (pinchStartDist > 0) {
         const center = getTouchCenter(canvas, e)
         const newZoom = pinchStartZoom * (dist / pinchStartDist)
-        const clampedZoom = Math.max(camera.MIN_ZOOM, Math.min(camera.MAX_ZOOM, newZoom))
+        const clampedZoom = Math.max(
+          camera.MIN_ZOOM,
+          Math.min(camera.MAX_ZOOM, newZoom),
+        )
         const ratio = clampedZoom / camera.zoom.value
         camera.zoom.value = clampedZoom
-        camera.offsetX.value = center.x - (center.x - camera.offsetX.value) * ratio
-        camera.offsetY.value = center.y - (center.y - camera.offsetY.value) * ratio
+        camera.offsetX.value =
+          center.x - (center.x - camera.offsetX.value) * ratio
+        camera.offsetY.value =
+          center.y - (center.y - camera.offsetY.value) * ratio
       }
       return
     }
@@ -91,7 +96,11 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
       const totalDx = coords.x - dragStartX
       const totalDy = coords.y - dragStartY
 
-      if (!isDragging && (Math.abs(totalDx) > DRAG_THRESHOLD || Math.abs(totalDy) > DRAG_THRESHOLD)) {
+      if (
+        !isDragging &&
+        (Math.abs(totalDx) > DRAG_THRESHOLD ||
+          Math.abs(totalDy) > DRAG_THRESHOLD)
+      ) {
         isDragging = true
       }
 
@@ -146,6 +155,6 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
     onPointerUp,
     onWheel,
     selectBuilding,
-    clearSelection
+    clearSelection,
   }
 }
