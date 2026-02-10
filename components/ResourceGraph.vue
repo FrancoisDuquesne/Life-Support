@@ -1,19 +1,37 @@
 <script setup>
-import { RESOURCE_KEYS, COLORS } from '~/utils/constants'
+import { RESOURCE_KEYS } from '~/utils/constants'
 
 const props = defineProps({
   history: Array,
-  expanded: Boolean
+  expanded: Boolean,
 })
 
 const emit = defineEmits(['toggle'])
 
 const open = computed({
   get: () => props.expanded,
-  set: (val) => { if (!val) emit('toggle') }
+  set: (val) => {
+    if (!val) emit('toggle')
+  },
 })
 
 const graphCanvas = ref(null)
+const RESOURCE_CSS_VAR_MAP = {
+  energy: '--ui-resource-energy',
+  food: '--ui-resource-food',
+  water: '--ui-resource-water',
+  minerals: '--ui-resource-minerals',
+  oxygen: '--ui-resource-oxygen',
+}
+
+function getResourceColor(key) {
+  const cssVar = RESOURCE_CSS_VAR_MAP[key]
+  if (!cssVar) return '#64748b'
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(cssVar)
+    .trim()
+  return value || '#64748b'
+}
 
 function niceScale(maxVal) {
   if (maxVal <= 0) return { yMax: 10, step: 5 }
@@ -111,7 +129,7 @@ function drawGraph() {
     ctx.lineCap = 'round'
 
     for (const key of RESOURCE_KEYS) {
-      ctx.strokeStyle = COLORS[key]
+      ctx.strokeStyle = getResourceColor(key)
       ctx.beginPath()
       for (let i = 0; i < data.length; i++) {
         const x = padL + (i / (data.length - 1)) * plotW
@@ -128,7 +146,7 @@ function drawGraph() {
       const x = padL + plotW
       const val = Math.max(0, Math.min(yMax, data[lastIdx][key] || 0))
       const y = padT + plotH - (val / yMax) * plotH
-      ctx.fillStyle = COLORS[key]
+      ctx.fillStyle = getResourceColor(key)
       ctx.beginPath()
       ctx.arc(x, y, 3, 0, Math.PI * 2)
       ctx.fill()
@@ -137,23 +155,34 @@ function drawGraph() {
 }
 
 watch(() => props.history && props.history.length, drawGraph)
-watch(() => props.expanded, (val) => {
-  if (val) nextTick(drawGraph)
-})
+watch(
+  () => props.expanded,
+  (val) => {
+    if (val) nextTick(drawGraph)
+  },
+)
 watch(graphCanvas, (canvas) => {
   if (canvas && props.expanded) nextTick(drawGraph)
 })
 </script>
 
 <template>
-  <UModal v-model:open="open" title="Resource Analytics" :ui="{ width: 'sm:max-w-xl' }">
+  <UModal
+    v-model:open="open"
+    title="Resource Analytics"
+    :ui="{ width: 'sm:max-w-xl' }"
+  >
     <template #body>
-      <canvas ref="graphCanvas" class="w-full h-[200px] block rounded max-md:h-[120px]"></canvas>
-      <div class="flex gap-3 mt-2 text-[0.55rem] uppercase tracking-[0.5px]">
-        <span class="font-bold text-amber-400">Energy</span>
-        <span class="font-bold text-green-400">Food</span>
-        <span class="font-bold text-blue-400">Water</span>
-        <span class="font-bold text-orange-400">Minerals</span>
+      <canvas
+        ref="graphCanvas"
+        class="block h-52 w-full rounded max-md:h-32"
+      ></canvas>
+      <div class="mt-2 flex gap-3 tracking-wide uppercase">
+        <span class="text-resource-energy font-bold">Energy</span>
+        <span class="text-resource-food font-bold">Food</span>
+        <span class="text-resource-water font-bold">Water</span>
+        <span class="text-resource-minerals font-bold">Minerals</span>
+        <span class="text-resource-oxygen font-bold">Oxygen</span>
       </div>
     </template>
   </UModal>

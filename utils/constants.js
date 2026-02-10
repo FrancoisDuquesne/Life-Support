@@ -5,10 +5,4 @@ export const HEX_H = HEX_SIZE * Math.sqrt(3)
 export const HORIZ = HEX_W * 0.75
 export const VERT = HEX_H
 
-export const RESOURCE_KEYS = ['energy', 'food', 'water', 'minerals']
-export const COLORS = {
-  energy: '#d97706',
-  food: '#16a34a',
-  water: '#2563eb',
-  minerals: '#ea580c'
-}
+export const RESOURCE_KEYS = ['energy', 'food', 'water', 'minerals', 'oxygen']

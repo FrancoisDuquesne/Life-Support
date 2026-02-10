@@ -19,13 +19,13 @@ The game renders a hex-tile map with an organic fog-of-war reveal mechanic. A gl
 
 ### Buildings
 
-| Building | Cost | Produces | Consumes |
-|----------|------|----------|----------|
-| Solar Panel | 10 minerals | 5 energy | — |
-| Hydroponic Farm | 15 minerals, 5 energy | 3 food | 1 water, 1 energy |
-| Water Extractor | 12 minerals | 4 water | 2 energy |
-| Mine | 8 minerals | 2 minerals | 3 energy |
-| Habitat | 25 minerals, 10 water | +5 population cap | 2 energy |
+| Building        | Cost                  | Produces          | Consumes          |
+| --------------- | --------------------- | ----------------- | ----------------- |
+| Solar Panel     | 10 minerals           | 5 energy          | —                 |
+| Hydroponic Farm | 15 minerals, 5 energy | 3 food            | 1 water, 1 energy |
+| Water Extractor | 12 minerals           | 4 water           | 2 energy          |
+| Mine            | 8 minerals            | 2 minerals        | 3 energy          |
+| Habitat         | 25 minerals, 10 water | +5 population cap | 2 energy          |
 
 ## Quick Start
 

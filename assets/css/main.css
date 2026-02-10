@@ -1,12 +1,27 @@
-@import "tailwindcss";
-@import "@nuxt/ui";
+@import 'tailwindcss';
+@import '@nuxt/ui';
 
-/* Game color tokens */
-:root {
-  --energy: #d97706;
-  --food: #16a34a;
-  --water: #2563eb;
-  --minerals: #ea580c;
+/* Resource palettes used by Nuxt UI semantic colors */
+@theme static {
+  --color-resource-energy-400: #f59e0b;
+  --color-resource-energy-500: #d97706;
+  --color-resource-energy: var(--color-resource-energy-500);
+
+  --color-resource-food-400: #22c55e;
+  --color-resource-food-500: #16a34a;
+  --color-resource-food: var(--color-resource-food-500);
+
+  --color-resource-water-400: #3b82f6;
+  --color-resource-water-500: #2563eb;
+  --color-resource-water: var(--color-resource-water-500);
+
+  --color-resource-minerals-400: #f97316;
+  --color-resource-minerals-500: #ea580c;
+  --color-resource-minerals: var(--color-resource-minerals-500);
+
+  --color-resource-oxygen-400: #22d3ee;
+  --color-resource-oxygen-500: #06b6d4;
+  --color-resource-oxygen: var(--color-resource-oxygen-500);
 }
 
 /* Base body styles */
@@ -15,25 +30,50 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   overflow: hidden;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: radial-gradient(
+    circle at top,
+    #eff6ff 0%,
+    var(--game-bg, #dbeafe) 48%,
+    #bfdbfe 100%
+  );
+  color: var(--ui-text);
 }
 
-.app-layout { position: relative; height: 100vh; overflow: hidden }
-.map-fullscreen { position: absolute; inset: 0; z-index: 1 }
+.app-layout {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+.map-fullscreen {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
 
-/* Glass-morphism panel */
+/* Shared panel surface */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.82);
-  backdrop-filter: blur(16px);
-  border-color: rgba(148, 163, 184, 0.15);
+  background: var(--ui-bg);
+  border-color: var(--ui-border-muted);
+  color: var(--ui-text-highlighted);
+  box-shadow: 0 2px 8px color-mix(in oklab, var(--ui-text) 8%, transparent);
 }
 
 /* Dark scrollbar */
-.scrollbar-dark::-webkit-scrollbar { width: 6px }
-.scrollbar-dark::-webkit-scrollbar-track { background: transparent }
-.scrollbar-dark::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 3px }
-.scrollbar-dark::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.35) }
+.scrollbar-dark::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-dark::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.25);
+  border-radius: 3px;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: rgba(51, 65, 85, 0.4);
+}
 
 /* Loading state */
 #__nuxt:empty::after {
@@ -42,6 +82,6 @@ body {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  color: #94a3b8;
-  font-size: .9rem;
+  color: var(--ui-text-muted);
+  font-size: 0.9rem;
 }
