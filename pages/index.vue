@@ -124,9 +124,9 @@ const hoverBuildingInfo = computed(() => {
   const placed =
     (colony.state.value && colony.state.value.placedBuildings) || []
   const building = placed.find((b) =>
-    (b.cells && b.cells.length > 0
+    b.cells && b.cells.length > 0
       ? b.cells.some((cell) => cell.x === hover.gx && cell.y === hover.gy)
-      : b.x === hover.gx && b.y === hover.gy),
+      : b.x === hover.gx && b.y === hover.gy,
   )
   if (!building) return null
 
@@ -200,6 +200,15 @@ async function onTileClick(gx, gy) {
   const result = await colony.buildAt(sel, gx, gy)
   if (result && result.success !== false) {
     colony.revealAround(gx, gy, 3)
+  }
+}
+
+async function onTileDelete(gx, gy) {
+  if (!colony.state.value || !colony.state.value.alive) return
+  if (!colony.revealedTiles.value.has(gx + ',' + gy)) return
+  const result = await colony.demolishAt(gx, gy)
+  if (result && result.success) {
+    interaction.clearSelection()
   }
 }
 
@@ -366,6 +375,7 @@ onMounted(() => {
           :grid-width="colony.gridWidth.value"
           :grid-height="colony.gridHeight.value"
           :on-tile-click="onTileClick"
+          :on-tile-delete="onTileDelete"
           :revealed-tiles="colony.revealedTiles.value"
           :terrain-map="colony.terrainMap.value"
           :active-events="colony.activeEvents.value"
@@ -547,7 +557,9 @@ onMounted(() => {
             aria-hidden="true"
           />
           <p class="text-muted text-sm">{{ collapseSummary }}</p>
-          <p class="text-primary/90 text-xs font-medium">Hint: {{ collapseHint }}</p>
+          <p class="text-primary/90 text-xs font-medium">
+            Hint: {{ collapseHint }}
+          </p>
         </div>
       </template>
       <template #footer>

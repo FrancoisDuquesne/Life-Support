@@ -151,6 +151,7 @@ export const BUILDING_TYPES = [
 ]
 
 const BUILDING_MAP = Object.fromEntries(BUILDING_TYPES.map((b) => [b.id, b]))
+const RESOURCE_KEYS = Object.keys(START_RESOURCES)
 
 function cellKey(x, y) {
   return x + ',' + y
@@ -202,6 +203,13 @@ function isBuildingActive(pb, tickCount) {
   return true
 }
 
+function clampResourcesNonNegative(resources) {
+  if (!resources) return
+  for (const key of RESOURCE_KEYS) {
+    resources[key] = Math.max(0, resources[key] || 0)
+  }
+}
+
 /** Get population count (works with both colonist array and legacy integer) */
 function getPopulation(state) {
   if (state.colonists) return state.colonists.length
@@ -211,7 +219,33 @@ function getPopulation(state) {
 /**
  * Create a fresh colony state object.
  */
-export function createColonyState() {
+function findLandingSite(terrainMap) {
+  const centerX = Math.floor(GRID_WIDTH / 2)
+  const centerY = Math.floor(GRID_HEIGHT / 2)
+  if (!terrainMap || terrainMap.length === 0) {
+    return { x: centerX, y: centerY }
+  }
+
+  let best = null
+  for (let y = 1; y < GRID_HEIGHT - 1; y++) {
+    for (let x = 1; x < GRID_WIDTH - 1; x++) {
+      const tile = getTerrainAt(terrainMap, x, y, GRID_WIDTH)
+      if (!tile || tile.terrain?.id !== 'PLAINS') continue
+      if (tile.hazard) continue
+      const dist = Math.abs(x - centerX) + Math.abs(y - centerY)
+      if (!best || dist < best.dist) {
+        best = { x, y, dist }
+      }
+    }
+  }
+
+  if (best) return { x: best.x, y: best.y }
+  return { x: centerX, y: centerY }
+}
+
+export function createColonyState(options = {}) {
+  const terrainSeed =
+    options.terrainSeed || Math.floor(Math.random() * 2147483647)
   const state = {
     name: 'Life Support',
     resources: { ...START_RESOURCES },
@@ -227,21 +261,20 @@ export function createColonyState() {
     populationCapacity: 10,
     tickCount: 0,
     alive: true,
-    terrainSeed: Math.floor(Math.random() * 2147483647),
+    terrainSeed,
     activeEvents: [],
     nextEventId: 1,
     waste: 0,
     wasteCapacity: 50,
   }
   state.colonists = createInitialColonists(state)
-  const centerX = Math.floor(GRID_WIDTH / 2)
-  const centerY = Math.floor(GRID_HEIGHT / 2)
-  const mdvCells = collectFootprintCells(centerX, centerY, 5)
+  const landing = findLandingSite(options.terrainMap)
+  const mdvCells = collectFootprintCells(landing.x, landing.y, 5)
   state.placedBuildings.push({
     id: state.nextBuildingId++,
     type: 'MDV_LANDING_SITE',
-    x: centerX,
-    y: centerY,
+    x: landing.x,
+    y: landing.y,
     cells: mdvCells,
     disabledUntilTick: 0,
     hp: 999,
@@ -392,8 +425,7 @@ export function processTick(state, terrainMap, revealedTiles) {
 
   // 5. Remove dead buildings (hp <= 0) + morale penalty
   const deadBuildings = state.placedBuildings.filter(
-    (pb) =>
-      pb.type !== 'MDV_LANDING_SITE' && pb.hp !== undefined && pb.hp <= 0,
+    (pb) => pb.type !== 'MDV_LANDING_SITE' && pb.hp !== undefined && pb.hp <= 0,
   )
   for (const dead of deadBuildings) {
     for (const cell of getBuildingCells(dead)) {
@@ -440,6 +472,8 @@ export function processTick(state, terrainMap, revealedTiles) {
       newRevealedTiles,
     }
   }
+
+  clampResourcesNonNegative(state.resources)
 
   // 7. Compute role bonuses + colony efficiency for production
   const roleBonuses = computeRoleBonuses(state)
@@ -511,7 +545,8 @@ export function processTick(state, terrainMap, revealedTiles) {
   if (state.resources.oxygen <= 0) {
     state.resources.oxygen = Math.max(0, state.resources.oxygen)
     if (state.colonists && state.colonists.length > 0) {
-      events += 'CRITICAL: Oxygen depleted — all colonists suffocated instantly. '
+      events +=
+        'CRITICAL: Oxygen depleted — all colonists suffocated instantly. '
       state.colonists = []
     }
   }
@@ -600,7 +635,12 @@ export function buildAt(state, type, x, y, terrainMap) {
   }
   const footprint = collectFootprintCells(x, y, bType.footprintSize)
   for (const cell of footprint) {
-    if (cell.x < 0 || cell.x >= GRID_WIDTH || cell.y < 0 || cell.y >= GRID_HEIGHT) {
+    if (
+      cell.x < 0 ||
+      cell.x >= GRID_WIDTH ||
+      cell.y < 0 ||
+      cell.y >= GRID_HEIGHT
+    ) {
       return {
         success: false,
         message: `${bType.name} footprint does not fit on map`,
@@ -670,6 +710,61 @@ export function buildAt(state, type, x, y, terrainMap) {
 }
 
 /**
+ * Demolish building occupying (x, y). Returns { success, message, colonyState }.
+ */
+export function demolishAt(state, x, y) {
+  if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) {
+    return {
+      success: false,
+      message: `Invalid coordinates (${x},${y})`,
+      colonyState: toSnapshot(state),
+    }
+  }
+
+  const target = state.placedBuildings.find((pb) =>
+    getBuildingCells(pb).some((cell) => cell.x === x && cell.y === y),
+  )
+
+  if (!target) {
+    return {
+      success: false,
+      message: `No building found at (${x},${y})`,
+      colonyState: toSnapshot(state),
+    }
+  }
+
+  if (target.type === 'MDV_LANDING_SITE') {
+    return {
+      success: false,
+      message: 'MDV Landing Site cannot be demolished',
+      colonyState: toSnapshot(state),
+    }
+  }
+
+  const bType = BUILDING_MAP[target.type]
+  for (const cell of getBuildingCells(target)) {
+    state.occupiedCells.delete(cellKey(cell.x, cell.y))
+  }
+  state.placedBuildings = state.placedBuildings.filter(
+    (pb) => pb.id !== target.id,
+  )
+  state.buildings[target.type.toLowerCase()] = Math.max(
+    0,
+    (state.buildings[target.type.toLowerCase()] || 0) - 1,
+  )
+
+  if (target.type === 'HABITAT') {
+    state.populationCapacity = Math.max(10, state.populationCapacity - 5)
+  }
+
+  return {
+    success: true,
+    message: `${bType ? bType.name : target.type} at (${target.x},${target.y}) was demolished`,
+    colonyState: toSnapshot(state),
+  }
+}
+
+/**
  * Convert internal state to snapshot for reactive UI.
  */
 export function toSnapshot(state) {
@@ -678,7 +773,10 @@ export function toSnapshot(state) {
 
   return {
     name: state.name,
-    resources: { ...state.resources },
+    resources: RESOURCE_KEYS.reduce((acc, key) => {
+      acc[key] = Math.max(0, state.resources[key] || 0)
+      return acc
+    }, {}),
     buildings: { ...state.buildings },
     population: pop,
     populationCapacity: state.populationCapacity,

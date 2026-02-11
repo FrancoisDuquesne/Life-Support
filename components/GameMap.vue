@@ -22,6 +22,7 @@ const props = defineProps({
   gridWidth: Number,
   gridHeight: Number,
   onTileClick: Function,
+  onTileDelete: Function,
   revealedTiles: Object,
   terrainMap: Array,
   activeEvents: Array,
@@ -76,9 +77,9 @@ function drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, type) {
 
 function drawUndiscoveredBackdrop(ctx, w, h, now) {
   const base = ctx.createLinearGradient(0, 0, 0, h)
-  base.addColorStop(0, '#6f3f2f')
-  base.addColorStop(0.55, '#8c4f37')
-  base.addColorStop(1, '#4e2f24')
+  base.addColorStop(0, '#050506')
+  base.addColorStop(0.5, '#0b0a0d')
+  base.addColorStop(1, '#120d0f')
   ctx.fillStyle = base
   ctx.fillRect(0, 0, w, h)
 
@@ -90,19 +91,19 @@ function drawUndiscoveredBackdrop(ctx, w, h, now) {
       x: w * (0.2 + Math.sin(t) * 0.03),
       y: h * 0.3,
       r: Math.max(w, h) * 0.24,
-      c: 'rgba(234, 179, 118, 0.20)',
+      c: 'rgba(120, 84, 72, 0.10)',
     },
     {
       x: w * (0.72 + Math.cos(t * 1.1) * 0.03),
       y: h * 0.58,
       r: Math.max(w, h) * 0.28,
-      c: 'rgba(191, 95, 55, 0.18)',
+      c: 'rgba(87, 50, 44, 0.08)',
     },
     {
       x: w * (0.46 + Math.sin(t * 0.8) * 0.02),
       y: h * 0.82,
       r: Math.max(w, h) * 0.22,
-      c: 'rgba(237, 137, 54, 0.14)',
+      c: 'rgba(96, 64, 58, 0.07)',
     },
   ]
   for (const b of blobs) {
@@ -263,7 +264,7 @@ function render() {
         if (adjacentToRevealed) {
           const cx = hexScreenX(col, z, ox)
           const cy = hexScreenY(col, row, z, oy)
-          ctx.fillStyle = 'rgba(84, 45, 32, 0.50)'
+          ctx.fillStyle = 'rgba(20, 16, 19, 0.78)'
           hexPath(ctx, cx, cy, hexS)
           ctx.fill()
         }
@@ -288,7 +289,8 @@ function render() {
   const occupied = new Set()
   if (props.state && props.state.placedBuildings) {
     props.state.placedBuildings.forEach((b) => {
-      const cells = b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
+      const cells =
+        b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
       cells.forEach((cell) => occupied.add(cell.x + ',' + cell.y))
     })
   }
@@ -310,7 +312,8 @@ function render() {
   // Layer 3: Buildings
   if (props.state && props.state.placedBuildings) {
     props.state.placedBuildings.forEach((b) => {
-      const cells = b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
+      const cells =
+        b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
       const visibleCells = cells.filter(
         (cell) =>
           cell.x >= minCol &&
@@ -332,7 +335,14 @@ function render() {
         metrics.iconSize,
         1,
       )
-      drawHPBar(ctx, metrics.cx, metrics.hpAnchorCy, hexS, b.hp ?? 100, b.maxHp ?? 100)
+      drawHPBar(
+        ctx,
+        metrics.cx,
+        metrics.hpAnchorCy,
+        hexS,
+        b.hp ?? 100,
+        b.maxHp ?? 100,
+      )
     })
   }
 
@@ -400,7 +410,9 @@ function render() {
         if (cell.x < 0 || cell.x >= gw || cell.y < 0 || cell.y >= gh) continue
         const cx = hexScreenX(cell.x, z, ox)
         const cy = hexScreenY(cell.x, cell.y, z, oy)
-        ctx.fillStyle = isOccupied ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.15)'
+        ctx.fillStyle = isOccupied
+          ? 'rgba(239, 68, 68, 0.3)'
+          : 'rgba(34, 197, 94, 0.15)'
         hexPath(ctx, cx, cy, hexS)
         ctx.fill()
       }
@@ -436,6 +448,19 @@ function render() {
   }
 }
 
+function handleContextMenu(e) {
+  const canvas = canvasRef.value
+  if (!canvas || !props.onTileDelete) return
+  const rect = canvas.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+  const grid = props.camera.screenToGrid(x, y)
+  const gw = props.gridWidth || 32
+  const gh = props.gridHeight || 32
+  if (grid.gx < 0 || grid.gx >= gw || grid.gy < 0 || grid.gy >= gh) return
+  props.onTileDelete(grid.gx, grid.gy)
+}
+
 function handleResize() {
   dirty = true
 }
@@ -468,6 +493,7 @@ onUnmounted(() => {
     @touchstart.prevent="interaction.onPointerDown(canvasRef, $event)"
     @touchmove.prevent="interaction.onPointerMove(canvasRef, $event)"
     @touchend.prevent="interaction.onPointerUp(canvasRef, $event, onTileClick)"
+    @contextmenu.prevent="handleContextMenu"
   ></canvas>
 </template>
 
