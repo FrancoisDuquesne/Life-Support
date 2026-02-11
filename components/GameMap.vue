@@ -449,6 +449,9 @@ function render() {
 }
 
 function handleContextMenu(e) {
+  e.preventDefault()
+  e.stopPropagation()
+
   const canvas = canvasRef.value
   if (!canvas || !props.onContextMenu) return
   const rect = canvas.getBoundingClientRect()
@@ -466,6 +469,30 @@ function handleContextMenu(e) {
 function handleResize() {
   dirty = true
 }
+
+const canvasCursor = computed(() => {
+  const hover = props.interaction?.hoverTile.value
+  if (!hover) return 'crosshair'
+
+  const gw = props.gridWidth || 32
+  const gh = props.gridHeight || 32
+  if (hover.gx < 0 || hover.gx >= gw || hover.gy < 0 || hover.gy >= gh)
+    return 'crosshair'
+
+  // Check if tile is revealed
+  if (props.revealedTiles && !props.revealedTiles.has(hover.gx + ',' + hover.gy))
+    return 'crosshair'
+
+  // Check if there's a building at this tile
+  const placed = (props.state && props.state.placedBuildings) || []
+  const building = placed.find((b) =>
+    b.cells && b.cells.length > 0
+      ? b.cells.some((cell) => cell.x === hover.gx && cell.y === hover.gy)
+      : b.x === hover.gx && b.y === hover.gy,
+  )
+
+  return building ? 'pointer' : 'crosshair'
+})
 
 onMounted(() => {
   const canvas = canvasRef.value
@@ -487,6 +514,7 @@ onUnmounted(() => {
   <canvas
     ref="canvasRef"
     class="game-canvas"
+    :style="{ cursor: canvasCursor }"
     @mousedown.prevent="interaction.onPointerDown(canvasRef, $event)"
     @mousemove.prevent="interaction.onPointerMove(canvasRef, $event)"
     @mouseup.prevent="interaction.onPointerUp(canvasRef, $event, onTileClick)"
@@ -505,6 +533,5 @@ onUnmounted(() => {
   height: 100%;
   display: block;
   touch-action: none;
-  cursor: crosshair;
 }
 </style>
