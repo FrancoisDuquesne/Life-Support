@@ -172,6 +172,18 @@ const contextMenuItems = computed(() => {
 
   return [
     {
+      label: `Upgrade ${bInfo?.name || building.type}`,
+      icon: 'i-heroicons-arrow-trending-up',
+      color: 'primary',
+      disabled: isMDV,
+      onSelect: () => {
+        if (!isMDV) {
+          colony.upgradeBuildingAt(building.x, building.y)
+        }
+        contextMenu.value.open = false
+      },
+    },
+    {
       label: `Demolish ${bInfo?.name || building.type}`,
       icon: 'i-heroicons-trash',
       color: 'error',
@@ -436,6 +448,7 @@ onMounted(() => {
           :revealed-tiles="colony.revealedTiles.value"
           :terrain-map="colony.terrainMap.value"
           :active-events="colony.activeEvents.value"
+          :buildable-cells="colony.buildableCells.value"
         />
         <!-- Build placement status bar -->
         <UAlert

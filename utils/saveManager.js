@@ -165,7 +165,9 @@ export function loadGame() {
     if (data.v !== SAVE_VERSION) return null
 
     const s = data.state
-    const placedBuildings = (s.placedBuildings || []).map(normalizePlacedBuilding)
+    const placedBuildings = (s.placedBuildings || []).map(
+      normalizePlacedBuilding,
+    )
 
     // Rebuild occupiedCells Set from placedBuildings
     const occupiedCells = new Set()

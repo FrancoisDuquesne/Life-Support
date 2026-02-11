@@ -27,6 +27,7 @@ const props = defineProps({
   revealedTiles: Object,
   terrainMap: Array,
   activeEvents: Array,
+  buildableCells: Object,
 })
 
 const canvasRef = ref(null)
@@ -209,7 +210,8 @@ function getBuildingRotation(type, cells, anchor, z, ox, oy) {
     const desiredTopDir = Math.atan2(anchorY - meanY, anchorX - meanX)
     const topA = base - Math.PI / 2
     const topB = topA + Math.PI
-    return angleDistance(topA, desiredTopDir) <= angleDistance(topB, desiredTopDir)
+    return angleDistance(topA, desiredTopDir) <=
+      angleDistance(topB, desiredTopDir)
       ? base
       : base + Math.PI
   }
@@ -478,6 +480,27 @@ function render() {
     }
   }
 
+  // Layer 2a: Build-range overlay when a building is selected
+  const buildable = props.buildableCells
+  if (
+    props.interaction.selectedBuilding.value &&
+    buildable &&
+    buildable.size > 0
+  ) {
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        const key = col + ',' + row
+        if (revealed && !revealed.has(key)) continue
+        if (!buildable.has(key)) continue
+        const cx = hexScreenX(col, z, ox)
+        const cy = hexScreenY(col, row, z, oy)
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.08)'
+        hexPath(ctx, cx, cy, hexS)
+        ctx.fill()
+      }
+    }
+  }
+
   // Layer 2: Grid lines (only revealed)
   ctx.strokeStyle = 'rgba(139, 92, 42, 0.2)'
   ctx.lineWidth = 0.5
@@ -568,15 +591,63 @@ function render() {
       drawHPBar(
         ctx,
         metrics.cx,
-        (b.type === 'MINE' || b.type === 'RECYCLING_CENTER') &&
-        cells.length > 1
+        (b.type === 'MINE' || b.type === 'RECYCLING_CENTER') && cells.length > 1
           ? metrics.cy - hexS * 0.45
           : metrics.hpAnchorCy,
         hexS,
         b.hp ?? 100,
         b.maxHp ?? 100,
       )
+      if ((b.level || 1) > 1) {
+        ctx.save()
+        const badgeX = metrics.cx + hexS * 0.42
+        const badgeY = metrics.cy - hexS * 0.4
+        ctx.fillStyle = 'rgba(14, 116, 144, 0.92)'
+        ctx.beginPath()
+        ctx.arc(badgeX, badgeY, Math.max(6, hexS * 0.22), 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = 'white'
+        ctx.font = `${Math.max(10, hexS * 0.22)}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(`L${b.level}`, badgeX, badgeY)
+        ctx.restore()
+      }
+      if (b.isUnderConstruction) {
+        ctx.save()
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)'
+        ctx.lineWidth = Math.max(1.5, hexS * 0.1)
+        ctx.setLineDash([Math.max(4, hexS * 0.2), Math.max(3, hexS * 0.15)])
+        hexPath(ctx, metrics.cx, metrics.cy, hexS * 0.8)
+        ctx.stroke()
+        ctx.restore()
+      }
     })
+  }
+
+  // Layer 3a: Colonist markers
+  if (props.state && props.state.colonistUnits) {
+    for (const unit of props.state.colonistUnits) {
+      if (
+        unit.x < minCol ||
+        unit.x > maxCol ||
+        unit.y < minRow ||
+        unit.y > maxRow
+      )
+        continue
+      if (revealed && !revealed.has(unit.x + ',' + unit.y)) continue
+      const cx = hexScreenX(unit.x, z, ox)
+      const cy = hexScreenY(unit.x, unit.y, z, oy)
+      ctx.save()
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.95)'
+      ctx.strokeStyle = 'rgba(17, 24, 39, 0.85)'
+      ctx.lineWidth = Math.max(1, z * 1.2)
+      ctx.beginPath()
+      ctx.arc(cx, cy - hexS * 0.28, Math.max(2, hexS * 0.14), 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+      ctx.restore()
+    }
   }
 
   // Layer 3b: Placement pulse animations
@@ -637,7 +708,10 @@ function render() {
           cell.y >= gh ||
           occupied.has(cell.x + ',' + cell.y),
       )
-      const isOccupied = !!invalidCell
+      const inBuildRange =
+        !props.buildableCells ||
+        props.buildableCells.has(hover.gx + ',' + hover.gy)
+      const isOccupied = !!invalidCell || !inBuildRange
 
       for (const cell of footprint) {
         if (cell.x < 0 || cell.x >= gw || cell.y < 0 || cell.y >= gh) continue

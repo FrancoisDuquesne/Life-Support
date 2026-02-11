@@ -4,6 +4,8 @@ import {
   processTick as engineTick,
   buildAt as engineBuild,
   demolishAt as engineDemolish,
+  upgradeBuildingAt as engineUpgradeBuilding,
+  getBuildableCells as engineBuildableCells,
   toSnapshot,
   getBuildingsInfo as engineBuildingsInfo,
   computeResourceDeltas as engineDeltas,
@@ -264,6 +266,17 @@ export function useColony() {
     return result
   }
 
+  function upgradeBuildingAt(x, y) {
+    if (!colony) return { success: false, message: 'Colony not initialized' }
+    const result = engineUpgradeBuilding(colony, x, y)
+    state.value = result.colonyState
+    addLog(state.value ? state.value.tickCount : null, result.message)
+    if (result.success) {
+      saveGame(colony, revealedTiles.value)
+    }
+    return result
+  }
+
   function demolishAt(x, y) {
     if (!colony) return { success: false, message: 'Colony not initialized' }
     const result = engineDemolish(colony, x, y)
@@ -334,6 +347,11 @@ export function useColony() {
     return engineDeltas(state.value, terrainMap.value)
   })
 
+  const buildableCells = computed(() => {
+    if (!state.value) return new Set()
+    return engineBuildableCells(state.value)
+  })
+
   const activeEvents = computed(() => {
     if (!state.value || !state.value.activeEvents) return []
     return state.value.activeEvents.filter(
@@ -367,10 +385,12 @@ export function useColony() {
     resourceHistory,
     revealedTiles,
     terrainMap,
+    buildableCells,
     activeEvents,
     tickSpeed,
     init,
     buildAt,
+    upgradeBuildingAt,
     demolishAt,
     resetColony,
     canAfford,

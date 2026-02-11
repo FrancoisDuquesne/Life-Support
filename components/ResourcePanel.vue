@@ -137,8 +137,8 @@ function formatSignedDelta(value) {
         v-for="r in resources"
         :key="r.key"
         :class="[
-          'flex items-center gap-1 whitespace-nowrap rounded px-1',
-          r.delta < 0 ? 'animate-pulse ring-1 ring-error/70 bg-error/10' : '',
+          'flex items-center gap-1 rounded px-1 whitespace-nowrap',
+          r.delta < 0 ? 'ring-error/70 bg-error/10 animate-pulse ring-1' : '',
         ]"
       >
         <UBadge color="neutral" variant="subtle" :label="abbrev[r.key]" />
@@ -175,7 +175,7 @@ function formatSignedDelta(value) {
         size="lg"
         :class="[
           'w-full px-2 py-1.5',
-          r.delta < 0 ? 'animate-pulse ring-1 ring-error/70 bg-error/10' : '',
+          r.delta < 0 ? 'ring-error/70 bg-error/10 animate-pulse ring-1' : '',
         ]"
       >
         <div class="flex w-full min-w-0 flex-col gap-0.5">

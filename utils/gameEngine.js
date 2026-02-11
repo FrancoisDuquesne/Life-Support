@@ -22,7 +22,7 @@ import {
   checkPopulationGrowth,
   createInitialColonists,
 } from '~/utils/colonistEngine'
-import { hexNeighbors } from '~/utils/hex'
+import { hexDistance, hexNeighbors } from '~/utils/hex'
 
 export const GRID_WIDTH = 64
 export const GRID_HEIGHT = 64
@@ -48,6 +48,8 @@ const WASTE_REDUCTION_PER_RECYCLER = 3
 // Production penalty when waste overflows
 export const WASTE_OVERFLOW_PENALTY = 0.75
 const MDV_FOOTPRINT_SIZE = 7
+const MAX_BUILD_RADIUS_FROM_COLONY = 7
+const MAX_UPGRADE_LEVEL = 3
 
 export const BUILDING_TYPES = [
   {
@@ -77,8 +79,9 @@ export const BUILDING_TYPES = [
     maxHp: 100,
     description: 'Grows food using water and energy',
     cost: { minerals: 15, energy: 5 },
-    produces: { food: 3 },
+    produces: { food: 5 },
     consumes: { water: 1, energy: 1 },
+    buildTime: 2,
   },
   {
     id: 'WATER_EXTRACTOR',
@@ -86,8 +89,9 @@ export const BUILDING_TYPES = [
     maxHp: 100,
     description: 'Extracts water from the Martian ice',
     cost: { minerals: 12 },
-    produces: { water: 4 },
+    produces: { water: 6 },
     consumes: { energy: 2 },
+    buildTime: 2,
   },
   {
     id: 'MINE',
@@ -95,9 +99,10 @@ export const BUILDING_TYPES = [
     maxHp: 100,
     description: 'Extracts minerals from the ground',
     cost: { minerals: 8 },
-    produces: { minerals: 2 },
+    produces: { minerals: 4 },
     consumes: { energy: 3 },
     footprintSize: 2,
+    buildTime: 3,
   },
   {
     id: 'HABITAT',
@@ -108,6 +113,7 @@ export const BUILDING_TYPES = [
     produces: {},
     consumes: { energy: 2 },
     footprintSize: 2,
+    buildTime: 3,
   },
   {
     id: 'OXYGEN_GENERATOR',
@@ -115,8 +121,9 @@ export const BUILDING_TYPES = [
     maxHp: 100,
     description: 'Electrolyzes water to produce breathable oxygen',
     cost: { minerals: 15, energy: 10 },
-    produces: { oxygen: 4 },
+    produces: { oxygen: 6 },
     consumes: { energy: 2, water: 1 },
+    buildTime: 2,
   },
   {
     id: 'RTG',
@@ -125,8 +132,9 @@ export const BUILDING_TYPES = [
     description:
       'Radioisotope generator — steady power, unaffected by dust storms',
     cost: { minerals: 20 },
-    produces: { energy: 3 },
+    produces: { energy: 5 },
     consumes: {},
+    buildTime: 2,
   },
   {
     id: 'RECYCLING_CENTER',
@@ -138,6 +146,7 @@ export const BUILDING_TYPES = [
     consumes: { energy: 2 },
     special: 'Reduces waste by 3/tick',
     footprintSize: 3,
+    buildTime: 3,
   },
   {
     id: 'REPAIR_STATION',
@@ -148,6 +157,7 @@ export const BUILDING_TYPES = [
     produces: {},
     consumes: { energy: 3, minerals: 1 },
     special: 'Repairs all buildings (5 HP/tick shared)',
+    buildTime: 3,
   },
 ]
 
@@ -196,6 +206,72 @@ function getBuildingCells(pb) {
 
 function createCollapseReason(cause, hint) {
   return { cause, hint }
+}
+
+function isUnderConstruction(pb) {
+  return !!pb.isUnderConstruction
+}
+
+function buildingLevel(pb) {
+  return Math.max(1, pb.level || 1)
+}
+
+function productionMultiplierFromLevel(pb) {
+  return 1 + (buildingLevel(pb) - 1) * 0.5
+}
+
+function consumptionMultiplierFromLevel(pb) {
+  return 1 + (buildingLevel(pb) - 1) * 0.2
+}
+
+function isWithinBuildRadius(state, footprint) {
+  const colonyCells = []
+  for (const pb of state.placedBuildings || []) {
+    colonyCells.push(...getBuildingCells(pb))
+  }
+  if (colonyCells.length === 0) return true
+  return footprint.some((f) =>
+    colonyCells.some(
+      (c) => hexDistance(c.x, c.y, f.x, f.y) <= MAX_BUILD_RADIUS_FROM_COLONY,
+    ),
+  )
+}
+
+function syncColonistUnits(state) {
+  if (!Array.isArray(state.colonistUnits)) state.colonistUnits = []
+  const aliveIds = new Set((state.colonists || []).map((c) => c.id))
+  state.colonistUnits = state.colonistUnits.filter((u) =>
+    aliveIds.has(u.colonistId),
+  )
+  const landing = (state.placedBuildings || []).find(
+    (b) => b.type === 'MDV_LANDING_SITE',
+  )
+  const lx = landing?.x ?? Math.floor(GRID_WIDTH / 2)
+  const ly = landing?.y ?? Math.floor(GRID_HEIGHT / 2)
+  for (const c of state.colonists || []) {
+    if (!state.colonistUnits.some((u) => u.colonistId === c.id)) {
+      state.colonistUnits.push({ colonistId: c.id, x: lx, y: ly })
+    }
+  }
+}
+
+export function getBuildableCells(state) {
+  const cells = new Set()
+  for (const pb of state?.placedBuildings || []) {
+    for (const origin of getBuildingCells(pb)) {
+      for (let y = 0; y < GRID_HEIGHT; y++) {
+        for (let x = 0; x < GRID_WIDTH; x++) {
+          if (
+            hexDistance(origin.x, origin.y, x, y) <=
+            MAX_BUILD_RADIUS_FROM_COLONY
+          ) {
+            cells.add(cellKey(x, y))
+          }
+        }
+      }
+    }
+  }
+  return cells
 }
 
 function isBuildingActive(pb, tickCount) {
@@ -258,6 +334,7 @@ export function createColonyState(options = {}) {
     nextBuildingId: 1,
     colonists: [],
     nextColonistId: 1,
+    colonistUnits: [],
     lastColonistArrivalTick: 0,
     populationCapacity: 10,
     tickCount: 0,
@@ -270,6 +347,11 @@ export function createColonyState(options = {}) {
   }
   state.colonists = createInitialColonists(state)
   const landing = findLandingSite(options.terrainMap)
+  state.colonistUnits = state.colonists.map((c, idx) => ({
+    colonistId: c.id,
+    x: landing.x + (idx % 2),
+    y: landing.y + (idx > 0 ? 1 : 0),
+  }))
   const mdvCells = collectFootprintCells(
     landing.x,
     landing.y,
@@ -313,10 +395,13 @@ export function computeResourceDeltas(state, terrainMap) {
     const bType = BUILDING_MAP[pb.type]
     if (!bType) continue
     if (!isBuildingActive(pb, state.tickCount)) continue
+    if (isUnderConstruction(pb)) continue
 
     activeBuildingCount++
 
     const hpEfficiency = pb.hp !== undefined ? pb.hp / (pb.maxHp || 100) : 1
+    const levelProdMult = productionMultiplierFromLevel(pb)
+    const levelConsMult = consumptionMultiplierFromLevel(pb)
 
     const tile = getTerrainAt(terrainMap, pb.x, pb.y, GRID_WIDTH)
     const terrainMult = getProductionMultiplier(bType, tile)
@@ -335,10 +420,10 @@ export function computeResourceDeltas(state, terrainMap) {
       if (res === 'energy') {
         effectiveMult *= modifiers.energyMultiplier
       }
-      deltas[res] = (deltas[res] || 0) + amt * effectiveMult
+      deltas[res] = (deltas[res] || 0) + amt * effectiveMult * levelProdMult
     }
     for (const [res, amt] of Object.entries(bType.consumes)) {
-      deltas[res] = (deltas[res] || 0) - amt * hpEfficiency
+      deltas[res] = (deltas[res] || 0) - amt * hpEfficiency * levelConsMult
     }
 
     if (bType.id === 'RECYCLING_CENTER') activeRecyclerCount++
@@ -374,6 +459,7 @@ export function processTick(state, terrainMap, revealedTiles) {
   }
 
   state.tickCount++
+  syncColonistUnits(state)
   let events = ''
   let newRevealedTiles = []
 
@@ -410,6 +496,17 @@ export function processTick(state, terrainMap, revealedTiles) {
   for (const pb of state.placedBuildings) {
     if (pb.hp !== undefined) {
       pb.hp = Math.max(0, pb.hp - DEGRADATION_PER_TICK)
+    }
+  }
+
+  for (const pb of state.placedBuildings) {
+    if (
+      isUnderConstruction(pb) &&
+      state.tickCount >= (pb.constructionDoneTick || 0)
+    ) {
+      pb.isUnderConstruction = false
+      const bName = BUILDING_MAP[pb.type]?.name || pb.type
+      events += `${bName} construction completed. `
     }
   }
 
@@ -493,8 +590,11 @@ export function processTick(state, terrainMap, revealedTiles) {
     const bType = BUILDING_MAP[pb.type]
     if (!bType) continue
     if (!isBuildingActive(pb, state.tickCount)) continue
+    if (isUnderConstruction(pb)) continue
 
     const hpEfficiency = pb.hp !== undefined ? pb.hp / (pb.maxHp || 100) : 1
+    const levelProdMult = productionMultiplierFromLevel(pb)
+    const levelConsMult = consumptionMultiplierFromLevel(pb)
     const tile = getTerrainAt(terrainMap, pb.x, pb.y, GRID_WIDTH)
     const terrainMult = getProductionMultiplier(bType, tile)
 
@@ -510,10 +610,12 @@ export function processTick(state, terrainMap, revealedTiles) {
       if (res === 'energy') {
         effectiveMult *= modifiers.energyMultiplier
       }
-      state.resources[res] = (state.resources[res] || 0) + amt * effectiveMult
+      state.resources[res] =
+        (state.resources[res] || 0) + amt * effectiveMult * levelProdMult
     }
     for (const [res, amt] of Object.entries(bType.consumes)) {
-      state.resources[res] = (state.resources[res] || 0) - amt * hpEfficiency
+      state.resources[res] =
+        (state.resources[res] || 0) - amt * hpEfficiency * levelConsMult
     }
   }
 
@@ -604,6 +706,34 @@ export function processTick(state, terrainMap, revealedTiles) {
     }
   }
 
+  const revealedSet = new Set(revealedTiles || [])
+  const discovered = new Set(newRevealedTiles)
+  for (const unit of state.colonistUnits || []) {
+    const neighbors = hexNeighbors(unit.x, unit.y).filter(
+      ([nx, ny]) => nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT,
+    )
+    const walkable = neighbors.filter(([nx, ny]) =>
+      revealedSet.has(`${nx},${ny}`),
+    )
+    if (walkable.length > 0) {
+      const idx = (state.tickCount + unit.colonistId) % walkable.length
+      const [nx, ny] = walkable[idx]
+      unit.x = nx
+      unit.y = ny
+    }
+    for (const [nx, ny] of hexNeighbors(unit.x, unit.y)) {
+      if (nx < 0 || nx >= GRID_WIDTH || ny < 0 || ny >= GRID_HEIGHT) continue
+      const key = `${nx},${ny}`
+      if (!revealedSet.has(key)) {
+        revealedSet.add(key)
+        discovered.add(key)
+      }
+    }
+  }
+  if (discovered.size > 0) {
+    newRevealedTiles = Array.from(discovered)
+  }
+
   return {
     tick: state.tickCount,
     events,
@@ -639,6 +769,13 @@ export function buildAt(state, type, x, y, terrainMap) {
     }
   }
   const footprint = collectFootprintCells(x, y, bType.footprintSize)
+  if (!isWithinBuildRadius(state, footprint)) {
+    return {
+      success: false,
+      message: `Must build within ${MAX_BUILD_RADIUS_FROM_COLONY} hexes of colony`,
+      colonyState: toSnapshot(state),
+    }
+  }
   for (const cell of footprint) {
     if (
       cell.x < 0 ||
@@ -689,6 +826,9 @@ export function buildAt(state, type, x, y, terrainMap) {
     disabledUntilTick: 0,
     hp: bType.maxHp,
     maxHp: bType.maxHp,
+    level: 1,
+    isUnderConstruction: true,
+    constructionDoneTick: state.tickCount + (bType.buildTime || 2),
   }
   state.placedBuildings.push(placed)
   for (const cell of footprint) {
@@ -701,7 +841,7 @@ export function buildAt(state, type, x, y, terrainMap) {
     state.populationCapacity += 5
   }
 
-  let message = `Successfully built ${bType.name} at (${x},${y})`
+  let message = `Construction started for ${bType.name} at (${x},${y})`
   const bonuses = getTerrainBonusText(bType, tile)
   if (bonuses.length > 0) {
     message += ' — ' + bonuses.join(', ')
@@ -710,6 +850,58 @@ export function buildAt(state, type, x, y, terrainMap) {
   return {
     success: true,
     message,
+    colonyState: toSnapshot(state),
+  }
+}
+
+export function upgradeBuildingAt(state, x, y) {
+  const target = state.placedBuildings.find((pb) =>
+    getBuildingCells(pb).some((cell) => cell.x === x && cell.y === y),
+  )
+
+  if (!target) {
+    return {
+      success: false,
+      message: `No building found at (${x},${y})`,
+      colonyState: toSnapshot(state),
+    }
+  }
+  if (target.type === 'MDV_LANDING_SITE') {
+    return {
+      success: false,
+      message: 'MDV Landing Site cannot be upgraded',
+      colonyState: toSnapshot(state),
+    }
+  }
+
+  const nextLevel = (target.level || 1) + 1
+  if (nextLevel > MAX_UPGRADE_LEVEL) {
+    return {
+      success: false,
+      message: 'Building already at max level',
+      colonyState: toSnapshot(state),
+    }
+  }
+
+  const upgradeCost = { minerals: 12 * nextLevel, energy: 5 * nextLevel }
+  for (const [res, amt] of Object.entries(upgradeCost)) {
+    if ((state.resources[res] || 0) < amt) {
+      return {
+        success: false,
+        message: 'Not enough resources for upgrade',
+        colonyState: toSnapshot(state),
+      }
+    }
+  }
+  for (const [res, amt] of Object.entries(upgradeCost)) {
+    state.resources[res] -= amt
+  }
+
+  target.level = nextLevel
+
+  return {
+    success: true,
+    message: `${BUILDING_MAP[target.type]?.name || target.type} upgraded to level ${nextLevel}`,
     colonyState: toSnapshot(state),
   }
 }
@@ -803,9 +995,13 @@ export function toSnapshot(state) {
       disabledUntilTick: pb.disabledUntilTick || 0,
       hp: pb.hp !== undefined ? pb.hp : 100,
       maxHp: pb.maxHp || 100,
+      level: pb.level || 1,
+      isUnderConstruction: !!pb.isUnderConstruction,
+      constructionDoneTick: pb.constructionDoneTick || 0,
       cells: getBuildingCells(pb).map((c) => ({ x: c.x, y: c.y })),
     })),
     colonists: colonists.map((c) => ({ ...c })),
+    colonistUnits: (state.colonistUnits || []).map((u) => ({ ...u })),
     lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
     avgHealth:
       colonists.length > 0
@@ -836,6 +1032,7 @@ export function getBuildingsInfo() {
     maxHp: b.maxHp,
     special: b.special || null,
     footprintSize: b.footprintSize || 1,
+    buildTime: b.buildTime || 2,
     buildable: b.buildable !== false,
   }))
 }

@@ -156,7 +156,10 @@ function applyMeteorStrike(state, event, revealedTiles) {
 
     // Remove building
     state.placedBuildings.splice(buildingIdx, 1)
-    const cells = Array.isArray(building.cells) && building.cells.length > 0 ? building.cells : [{ x: tx, y: ty }]
+    const cells =
+      Array.isArray(building.cells) && building.cells.length > 0
+        ? building.cells
+        : [{ x: tx, y: ty }]
     for (const cell of cells) {
       state.occupiedCells.delete(cell.x + ',' + cell.y)
     }
