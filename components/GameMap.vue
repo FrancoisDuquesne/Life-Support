@@ -35,6 +35,10 @@ let dirty = true
 let lastPlacedCount = 0
 
 const placementAnims = []
+const HEX_VERTEX_ANGLES = Array.from(
+  { length: 6 },
+  (_, i) => (Math.PI / 180) * (60 * i),
+)
 
 function getFootprintRenderMetrics(cells, z, ox, oy, hexS) {
   const centers = cells.map((cell) => ({
@@ -56,6 +60,90 @@ function getFootprintRenderMetrics(cells, z, ox, oy, hexS) {
   )
   const hpAnchorCy = maxCy
   return { cx, cy, iconSize, hpAnchorCy }
+}
+
+function roundCoord(v) {
+  return Math.round(v * 1000) / 1000
+}
+
+function pointKey(x, y) {
+  return `${roundCoord(x)},${roundCoord(y)}`
+}
+
+function edgeKey(aKey, bKey) {
+  return aKey < bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`
+}
+
+function buildFootprintOuterLoops(cells, z, ox, oy, hexS) {
+  const edgeCounts = new Map()
+  const edgePoints = new Map()
+  const points = new Map()
+  const ringR = hexS
+
+  for (const cell of cells) {
+    const cx = hexScreenX(cell.x, z, ox)
+    const cy = hexScreenY(cell.x, cell.y, z, oy)
+    const verts = HEX_VERTEX_ANGLES.map((a) => ({
+      x: cx + ringR * Math.cos(a),
+      y: cy + ringR * Math.sin(a),
+    }))
+    for (let i = 0; i < 6; i++) {
+      const a = verts[i]
+      const b = verts[(i + 1) % 6]
+      const aKey = pointKey(a.x, a.y)
+      const bKey = pointKey(b.x, b.y)
+      points.set(aKey, { x: roundCoord(a.x), y: roundCoord(a.y) })
+      points.set(bKey, { x: roundCoord(b.x), y: roundCoord(b.y) })
+      const eKey = edgeKey(aKey, bKey)
+      edgeCounts.set(eKey, (edgeCounts.get(eKey) || 0) + 1)
+      edgePoints.set(eKey, [aKey, bKey])
+    }
+  }
+
+  const adjacency = new Map()
+  for (const [eKey, count] of edgeCounts) {
+    if (count !== 1) continue
+    const [aKey, bKey] = edgePoints.get(eKey)
+    if (!adjacency.has(aKey)) adjacency.set(aKey, new Set())
+    if (!adjacency.has(bKey)) adjacency.set(bKey, new Set())
+    adjacency.get(aKey).add(bKey)
+    adjacency.get(bKey).add(aKey)
+  }
+
+  const loops = []
+  const used = new Set()
+  for (const [eKey, count] of edgeCounts) {
+    if (count !== 1 || used.has(eKey)) continue
+    const [startA, startB] = edgePoints.get(eKey)
+    const loopKeys = [startA, startB]
+    used.add(eKey)
+    let prev = startA
+    let curr = startB
+
+    while (curr !== startA) {
+      const neighbors = Array.from(adjacency.get(curr) || [])
+      let next = null
+      for (const n of neighbors) {
+        if (n === prev) continue
+        const nEdge = edgeKey(curr, n)
+        if (used.has(nEdge)) continue
+        next = n
+        used.add(nEdge)
+        break
+      }
+      if (!next) break
+      loopKeys.push(next)
+      prev = curr
+      curr = next
+      if (loopKeys.length > 2048) break
+    }
+
+    if (loopKeys.length >= 4 && loopKeys[loopKeys.length - 1] === startA) {
+      loops.push(loopKeys.map((k) => points.get(k)))
+    }
+  }
+
+  return loops
 }
 
 const SINGLE_TILE_ROTATIONS = {
@@ -131,13 +219,6 @@ function getBuildingRotation(type, cells, anchor, z, ox, oy) {
 
 function drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, type) {
   const isLandingSite = type === 'MDV_LANDING_SITE'
-  ctx.fillStyle = isLandingSite
-    ? 'rgba(226, 232, 240, 0.20)'
-    : 'rgba(248, 250, 252, 0.08)'
-  ctx.strokeStyle = isLandingSite
-    ? 'rgba(248, 250, 252, 0.55)'
-    : 'rgba(248, 250, 252, 0.38)'
-  ctx.lineWidth = isLandingSite ? 1.5 : 1.1
   for (const cell of visibleCells) {
     const ccx = hexScreenX(cell.x, z, ox)
     const ccy = hexScreenY(cell.x, cell.y, z, oy)
@@ -158,17 +239,46 @@ function drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, type) {
       ctx.fillStyle = scorch
       hexPath(ctx, ccx, ccy, hexS * 0.95)
       ctx.fill()
-
-      ctx.strokeStyle = 'rgba(72, 40, 26, 0.52)'
-      ctx.lineWidth = 1.1
-      hexPath(ctx, ccx, ccy, hexS * 0.84)
-      ctx.stroke()
       ctx.restore()
     }
-    hexPath(ctx, ccx, ccy, hexS * (isLandingSite ? 0.9 : 0.84))
+  }
+
+  const loops = buildFootprintOuterLoops(visibleCells, z, ox, oy, hexS)
+  if (loops.length === 0) return
+
+  ctx.save()
+  ctx.fillStyle = isLandingSite
+    ? 'rgba(226, 232, 240, 0.20)'
+    : 'rgba(248, 250, 252, 0.08)'
+  for (const loop of loops) {
+    ctx.beginPath()
+    ctx.moveTo(loop[0].x, loop[0].y)
+    for (let i = 1; i < loop.length; i++) {
+      ctx.lineTo(loop[i].x, loop[i].y)
+    }
+    ctx.closePath()
     ctx.fill()
+  }
+  ctx.strokeStyle = isLandingSite
+    ? 'rgba(248, 250, 252, 0.62)'
+    : 'rgba(248, 250, 252, 0.46)'
+  ctx.lineWidth = isLandingSite ? 1.8 : 1.25
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  if (!isLandingSite) {
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.2)'
+    ctx.shadowBlur = Math.max(2, hexS * 0.16)
+  }
+  for (const loop of loops) {
+    ctx.beginPath()
+    ctx.moveTo(loop[0].x, loop[0].y)
+    for (let i = 1; i < loop.length; i++) {
+      ctx.lineTo(loop[i].x, loop[i].y)
+    }
+    ctx.closePath()
     ctx.stroke()
   }
+  ctx.restore()
 }
 
 function drawUndiscoveredBackdrop(ctx, w, h, now) {

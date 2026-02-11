@@ -810,27 +810,95 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
     }
 
     case 'MDV_LANDING_SITE': {
+      const bodyR = r * 0.78
+      const legInner = bodyR * 0.92
+      const legOuter = bodyR * 1.45
+      const padR = r * 0.16
+
+      // Central hull (seen from above) with slight faceting.
       ctx.fillStyle = '#dce5ef'
       ctx.beginPath()
-      ctx.arc(cx, cy, r * 0.96, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = hullLine
-      ctx.lineWidth = 1.2
-      ctx.stroke()
-
-      ctx.fillStyle = hull
-      ctx.beginPath()
-      ctx.moveTo(cx, cy - r * 0.8)
-      ctx.lineTo(cx + r * 0.5, cy + r * 0.35)
-      ctx.lineTo(cx - r * 0.5, cy + r * 0.35)
+      for (let i = 0; i < 6; i++) {
+        const a = -Math.PI / 2 + i * (Math.PI / 3)
+        const vx = cx + bodyR * Math.cos(a)
+        const vy = cy + bodyR * Math.sin(a)
+        if (i === 0) ctx.moveTo(vx, vy)
+        else ctx.lineTo(vx, vy)
+      }
       ctx.closePath()
       ctx.fill()
-      ctx.strokeStyle = hullLine
+      ctx.strokeStyle = '#93a7bd'
+      ctx.lineWidth = Math.max(1.2, r * 0.09)
       ctx.stroke()
 
-      ctx.fillStyle = '#cbe2fb'
+      // Upper hull ring.
+      ctx.fillStyle = '#e7eef6'
       ctx.beginPath()
-      ctx.arc(cx, cy - r * 0.42, r * 0.2, 0, Math.PI * 2)
+      ctx.arc(cx, cy, bodyR * 0.58, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#a7b8cb'
+      ctx.lineWidth = Math.max(0.9, r * 0.06)
+      ctx.stroke()
+
+      // Six landing legs and pads.
+      ctx.strokeStyle = '#8fa2b6'
+      ctx.lineWidth = Math.max(1.2, r * 0.11)
+      ctx.lineCap = 'round'
+      for (let i = 0; i < 6; i++) {
+        const a = -Math.PI / 2 + i * (Math.PI / 3)
+        const sx = cx + legInner * Math.cos(a)
+        const sy = cy + legInner * Math.sin(a)
+        const ex = cx + legOuter * Math.cos(a)
+        const ey = cy + legOuter * Math.sin(a)
+        ctx.beginPath()
+        ctx.moveTo(sx, sy)
+        ctx.lineTo(ex, ey)
+        ctx.stroke()
+
+        ctx.fillStyle = '#d9e3ee'
+        ctx.beginPath()
+        ctx.arc(ex, ey, padR, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#8fa2b6'
+        ctx.lineWidth = Math.max(0.8, r * 0.05)
+        ctx.stroke()
+        ctx.strokeStyle = '#8fa2b6'
+        ctx.lineWidth = Math.max(1.2, r * 0.11)
+      }
+
+      // Side hatch (door) on one side.
+      const doorA = Math.PI / 5
+      const doorX = cx + bodyR * 0.42 * Math.cos(doorA)
+      const doorY = cy + bodyR * 0.42 * Math.sin(doorA)
+      ctx.save()
+      ctx.translate(doorX, doorY)
+      ctx.rotate(doorA)
+      ctx.fillStyle = '#9eb2c7'
+      ctx.fillRect(-r * 0.12, -r * 0.09, r * 0.24, r * 0.18)
+      ctx.strokeStyle = '#7e93a8'
+      ctx.lineWidth = Math.max(0.7, r * 0.045)
+      ctx.strokeRect(-r * 0.12, -r * 0.09, r * 0.24, r * 0.18)
+      ctx.restore()
+
+      // Opposite porthole windows.
+      const winBase = doorA + Math.PI
+      ctx.fillStyle = '#b9d6f5'
+      for (let i = -1; i <= 1; i++) {
+        const wa = winBase + i * 0.24
+        const wx = cx + bodyR * 0.44 * Math.cos(wa)
+        const wy = cy + bodyR * 0.44 * Math.sin(wa)
+        ctx.beginPath()
+        ctx.arc(wx, wy, r * 0.065, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#7e93a8'
+        ctx.lineWidth = Math.max(0.55, r * 0.035)
+        ctx.stroke()
+      }
+
+      // Core cap.
+      ctx.fillStyle = '#c1d5ea'
+      ctx.beginPath()
+      ctx.arc(cx, cy, r * 0.16, 0, Math.PI * 2)
       ctx.fill()
       break
     }
