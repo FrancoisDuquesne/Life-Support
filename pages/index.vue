@@ -42,13 +42,21 @@ const colonistsPanelRef = ref(null)
 const eventToast = ref(null)
 let toastTimer = null
 
-const collapseMessage = computed(() => {
+const collapseSummary = computed(() => {
+  const reason = colony.state.value && colony.state.value.collapseReason
+  if (reason && reason.cause) return reason.cause
   const log = colony.eventLog.value || []
   for (let i = log.length - 1; i >= 0; i--) {
     const msg = log[i] && log[i].msg ? log[i].msg : ''
     if (/COLLAPSED/i.test(msg)) return msg
   }
   return 'Life support has failed. The colony is no longer operational.'
+})
+
+const collapseHint = computed(() => {
+  const reason = colony.state.value && colony.state.value.collapseReason
+  if (reason && reason.hint) return reason.hint
+  return 'Tip: Keep all critical resources above zero and respond to warnings immediately.'
 })
 
 watch(
@@ -115,7 +123,11 @@ const hoverBuildingInfo = computed(() => {
 
   const placed =
     (colony.state.value && colony.state.value.placedBuildings) || []
-  const building = placed.find((b) => b.x === hover.gx && b.y === hover.gy)
+  const building = placed.find((b) =>
+    (b.cells && b.cells.length > 0
+      ? b.cells.some((cell) => cell.x === hover.gx && cell.y === hover.gy)
+      : b.x === hover.gx && b.y === hover.gy),
+  )
   if (!building) return null
 
   const info = colony.buildingsInfo.value.find((b) => b.id === building.type)
@@ -534,7 +546,8 @@ onMounted(() => {
             class="text-error h-20 w-20"
             aria-hidden="true"
           />
-          <p class="text-muted text-sm">{{ collapseMessage }}</p>
+          <p class="text-muted text-sm">{{ collapseSummary }}</p>
+          <p class="text-primary/90 text-xs font-medium">Hint: {{ collapseHint }}</p>
         </div>
       </template>
       <template #footer>

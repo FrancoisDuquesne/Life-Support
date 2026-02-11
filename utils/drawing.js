@@ -11,6 +11,7 @@ export const BUILDING_COLORS = {
   RTG: { fill: '#a855f7', accent: '#c084fc' },
   RECYCLING_CENTER: { fill: '#84cc16', accent: '#a3e635' },
   REPAIR_STATION: { fill: '#ef4444', accent: '#f87171' },
+  MDV_LANDING_SITE: { fill: '#64748b', accent: '#e2e8f0' },
 }
 
 // Pre-generated caches
@@ -71,9 +72,9 @@ export function getTileColors(gw, gh, terrainMap) {
         baseLight = t.light
       }
 
-      const hue = baseHue + (n2 - 0.5) * 10
-      const sat = baseSat + (n1 - 0.5) * 15
-      const light = baseLight + (combined - 0.5) * 12
+      const hue = baseHue + (n2 - 0.5) * 14
+      const sat = baseSat + (n1 - 0.5) * 22
+      const light = baseLight + (combined - 0.5) * 18
       data[y * gw + x] =
         'hsl(' +
         hue.toFixed(0) +
@@ -383,6 +384,31 @@ export function drawEventOverlay(ctx, eventType, canvasW, canvasH, tick) {
       }
       break
     }
+    case 'METEOR_STRIKE': {
+      for (let i = 0; i < 8; i++) {
+        const t = (tick * 0.015 + i * 17) % 1
+        const startX = ((i * 211) % (canvasW + 120)) - 60
+        const startY = ((i * 97) % (canvasH * 0.5)) - 120
+        const x = startX + t * 220
+        const y = startY + t * 220
+
+        const tail = ctx.createLinearGradient(x - 20, y - 20, x, y)
+        tail.addColorStop(0, 'rgba(251, 191, 36, 0)')
+        tail.addColorStop(1, 'rgba(251, 191, 36, 0.45)')
+        ctx.strokeStyle = tail
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(x - 26, y - 26)
+        ctx.lineTo(x, y)
+        ctx.stroke()
+
+        ctx.fillStyle = 'rgba(255, 237, 213, 0.85)'
+        ctx.beginPath()
+        ctx.arc(x, y, 2.2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      break
+    }
     case 'SOLAR_FLARE': {
       // Yellow-white vignette at edges
       const grad = ctx.createRadialGradient(
@@ -673,6 +699,30 @@ export function drawBuilding(ctx, type, x, y, size, alpha) {
       ctx.moveTo(cx, cy - r * 0.12)
       ctx.lineTo(cx, cy + r * 0.12)
       ctx.stroke()
+      break
+    }
+    case 'MDV_LANDING_SITE': {
+      const padW = r * 2.1
+      const padH = r * 1.3
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.4)'
+      ctx.fillRect(cx - padW / 2, cy - padH / 2, padW, padH)
+      ctx.strokeStyle = colors.accent
+      ctx.lineWidth = 1.4
+      ctx.strokeRect(cx - padW / 2, cy - padH / 2, padW, padH)
+
+      ctx.fillStyle = colors.fill
+      ctx.beginPath()
+      ctx.moveTo(cx, cy - r * 0.95)
+      ctx.lineTo(cx + r * 0.55, cy + r * 0.25)
+      ctx.lineTo(cx - r * 0.55, cy + r * 0.25)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.fillStyle = colors.accent
+      ctx.fillRect(cx - r * 0.1, cy + r * 0.25, r * 0.2, r * 0.55)
+      ctx.beginPath()
+      ctx.arc(cx, cy - r * 0.2, r * 0.16, 0, Math.PI * 2)
+      ctx.fill()
       break
     }
     default: {

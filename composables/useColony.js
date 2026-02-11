@@ -44,10 +44,10 @@ export function useColony() {
   // Terrain map (generated from seed, shared with GameMap)
   const terrainMap = ref(null)
 
-  function initRevealedMap(gw, gh) {
+  function initRevealedMap(gw, gh, seed) {
     const centerCol = Math.floor(gw / 2)
     const centerRow = Math.floor(gh / 2)
-    const rng = mulberry32(42)
+    const rng = mulberry32(seed || Date.now())
     const revealed = new Set()
     const TARGET = 180
 
@@ -126,7 +126,7 @@ export function useColony() {
       if (!terrainOk) {
         addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
       }
-      initRevealedMap(GRID_WIDTH, GRID_HEIGHT)
+      initRevealedMap(GRID_WIDTH, GRID_HEIGHT, colony.terrainSeed)
     }
 
     startTickTimer()
@@ -190,7 +190,7 @@ export function useColony() {
     if (!terrainOk) {
       addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
     }
-    initRevealedMap(GRID_WIDTH, GRID_HEIGHT)
+    initRevealedMap(GRID_WIDTH, GRID_HEIGHT, colony.terrainSeed)
     startTickTimer()
   }
 

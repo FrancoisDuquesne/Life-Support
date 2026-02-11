@@ -10,7 +10,10 @@ import {
   drawRocks,
   drawBuilding,
   drawHPBar,
+  drawTerrainOverlay,
+  drawEventOverlay,
 } from '~/utils/drawing'
+import { getFootprintCellsForType } from '~/utils/gameEngine'
 
 const props = defineProps({
   camera: Object,
@@ -20,6 +23,8 @@ const props = defineProps({
   gridHeight: Number,
   onTileClick: Function,
   revealedTiles: Object,
+  terrainMap: Array,
+  activeEvents: Array,
 })
 
 const canvasRef = ref(null)
@@ -28,6 +33,46 @@ let dirty = true
 let lastPlacedCount = 0
 
 const placementAnims = []
+
+function getFootprintRenderMetrics(cells, z, ox, oy, hexS) {
+  const centers = cells.map((cell) => ({
+    x: hexScreenX(cell.x, z, ox),
+    y: hexScreenY(cell.x, cell.y, z, oy),
+  }))
+  const count = Math.max(1, centers.length)
+  const cx = centers.reduce((sum, p) => sum + p.x, 0) / count
+  const cy = centers.reduce((sum, p) => sum + p.y, 0) / count
+  const minCx = Math.min(...centers.map((p) => p.x))
+  const maxCx = Math.max(...centers.map((p) => p.x))
+  const minCy = Math.min(...centers.map((p) => p.y))
+  const maxCy = Math.max(...centers.map((p) => p.y))
+  const footprintW = maxCx - minCx + hexS * 1.7
+  const footprintH = maxCy - minCy + hexS * 1.7
+  const iconSize = Math.max(
+    HEX_H * z * 0.95,
+    Math.min(footprintW, footprintH) * (cells.length > 1 ? 0.92 : 0.8),
+  )
+  const hpAnchorCy = maxCy
+  return { cx, cy, iconSize, hpAnchorCy }
+}
+
+function drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, type) {
+  const isLandingSite = type === 'MDV_LANDING_SITE'
+  ctx.fillStyle = isLandingSite
+    ? 'rgba(226, 232, 240, 0.20)'
+    : 'rgba(248, 250, 252, 0.08)'
+  ctx.strokeStyle = isLandingSite
+    ? 'rgba(248, 250, 252, 0.55)'
+    : 'rgba(248, 250, 252, 0.38)'
+  ctx.lineWidth = isLandingSite ? 1.5 : 1.1
+  for (const cell of visibleCells) {
+    const ccx = hexScreenX(cell.x, z, ox)
+    const ccy = hexScreenY(cell.x, cell.y, z, oy)
+    hexPath(ctx, ccx, ccy, hexS * (isLandingSite ? 0.9 : 0.84))
+    ctx.fill()
+    ctx.stroke()
+  }
+}
 
 function drawUndiscoveredBackdrop(ctx, w, h, now) {
   const base = ctx.createLinearGradient(0, 0, 0, h)
@@ -167,7 +212,7 @@ function render() {
   const minRow = Math.max(0, Math.floor((-oy - HEX_H * z) / (VERT * z)))
   const maxRow = Math.min(gh - 1, Math.ceil((h - oy + HEX_H * z) / (VERT * z)))
 
-  const colors = getTileColors(gw, gh)
+  const colors = getTileColors(gw, gh, props.terrainMap)
   const rocks = getTileRocks(gw, gh)
   const revealed = props.revealedTiles
 
@@ -243,20 +288,51 @@ function render() {
   const occupied = new Set()
   if (props.state && props.state.placedBuildings) {
     props.state.placedBuildings.forEach((b) => {
-      occupied.add(b.x + ',' + b.y)
+      const cells = b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
+      cells.forEach((cell) => occupied.add(cell.x + ',' + cell.y))
     })
+  }
+
+  // Layer 2b: Terrain overlays (deposits/hazards)
+  if (props.terrainMap) {
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        if (revealed && !revealed.has(col + ',' + row)) continue
+        const tile = props.terrainMap[row * gw + col]
+        if (!tile || (!tile.deposit && !tile.hazard)) continue
+        const cx = hexScreenX(col, z, ox)
+        const cy = hexScreenY(col, row, z, oy)
+        drawTerrainOverlay(ctx, tile, cx, cy, hexS, now)
+      }
+    }
   }
 
   // Layer 3: Buildings
   if (props.state && props.state.placedBuildings) {
     props.state.placedBuildings.forEach((b) => {
-      if (b.x >= minCol && b.x <= maxCol && b.y >= minRow && b.y <= maxRow) {
-        const cx = hexScreenX(b.x, z, ox)
-        const cy = hexScreenY(b.x, b.y, z, oy)
-        const bSize = HEX_H * z
-        drawBuilding(ctx, b.type, cx - bSize / 2, cy - bSize / 2, bSize, 1)
-        drawHPBar(ctx, cx, cy, hexS, b.hp ?? 100, b.maxHp ?? 100)
+      const cells = b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
+      const visibleCells = cells.filter(
+        (cell) =>
+          cell.x >= minCol &&
+          cell.x <= maxCol &&
+          cell.y >= minRow &&
+          cell.y <= maxRow &&
+          (!revealed || revealed.has(cell.x + ',' + cell.y)),
+      )
+      if (visibleCells.length === 0) return
+      if (cells.length > 1) {
+        drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, b.type)
       }
+      const metrics = getFootprintRenderMetrics(cells, z, ox, oy, hexS)
+      drawBuilding(
+        ctx,
+        b.type,
+        metrics.cx - metrics.iconSize / 2,
+        metrics.cy - metrics.iconSize / 2,
+        metrics.iconSize,
+        1,
+      )
+      drawHPBar(ctx, metrics.cx, metrics.hpAnchorCy, hexS, b.hp ?? 100, b.maxHp ?? 100)
     })
   }
 
@@ -309,27 +385,53 @@ function render() {
     hover.gy < gh
   ) {
     if (!revealed || revealed.has(hover.gx + ',' + hover.gy)) {
-      const cx = hexScreenX(hover.gx, z, ox)
-      const cy = hexScreenY(hover.gx, hover.gy, z, oy)
-      const isOccupied = occupied.has(hover.gx + ',' + hover.gy)
+      const footprint = getFootprintCellsForType(sel, hover.gx, hover.gy)
+      const invalidCell = footprint.find(
+        (cell) =>
+          cell.x < 0 ||
+          cell.x >= gw ||
+          cell.y < 0 ||
+          cell.y >= gh ||
+          occupied.has(cell.x + ',' + cell.y),
+      )
+      const isOccupied = !!invalidCell
 
-      if (isOccupied) {
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'
-      } else {
-        ctx.fillStyle = 'rgba(34, 197, 94, 0.15)'
+      for (const cell of footprint) {
+        if (cell.x < 0 || cell.x >= gw || cell.y < 0 || cell.y >= gh) continue
+        const cx = hexScreenX(cell.x, z, ox)
+        const cy = hexScreenY(cell.x, cell.y, z, oy)
+        ctx.fillStyle = isOccupied ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.15)'
+        hexPath(ctx, cx, cy, hexS)
+        ctx.fill()
       }
-      hexPath(ctx, cx, cy, hexS)
-      ctx.fill()
 
-      const bSize = HEX_H * z
+      const visibleFootprint = footprint.filter(
+        (cell) =>
+          cell.x >= minCol &&
+          cell.x <= maxCol &&
+          cell.y >= minRow &&
+          cell.y <= maxRow &&
+          (!revealed || revealed.has(cell.x + ',' + cell.y)),
+      )
+      if (footprint.length > 1 && visibleFootprint.length > 0) {
+        drawBuildingFootprint(ctx, visibleFootprint, z, ox, oy, hexS, sel)
+      }
+      const metrics = getFootprintRenderMetrics(footprint, z, ox, oy, hexS)
       drawBuilding(
         ctx,
         sel,
-        cx - bSize / 2,
-        cy - bSize / 2,
-        bSize,
+        metrics.cx - metrics.iconSize / 2,
+        metrics.cy - metrics.iconSize / 2,
+        metrics.iconSize,
         isOccupied ? 0.3 : 0.6,
       )
+    }
+  }
+
+  // Layer 6: active event overlays
+  if (props.activeEvents && props.activeEvents.length > 0) {
+    for (const event of props.activeEvents) {
+      drawEventOverlay(ctx, event.type, w, h, now)
     }
   }
 }

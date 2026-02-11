@@ -89,10 +89,11 @@ function drawSparklines() {
 }
 
 watch(
-  () => props.history && props.history.length,
+  () => props.history,
   () => {
     nextTick(drawSparklines)
   },
+  { deep: true },
 )
 
 const resources = computed(() => {
@@ -135,7 +136,10 @@ function formatSignedDelta(value) {
       <div
         v-for="r in resources"
         :key="r.key"
-        class="flex items-center gap-1 whitespace-nowrap"
+        :class="[
+          'flex items-center gap-1 whitespace-nowrap rounded px-1',
+          r.delta < 0 ? 'animate-pulse ring-1 ring-error/70 bg-error/10' : '',
+        ]"
       >
         <UBadge color="neutral" variant="subtle" :label="abbrev[r.key]" />
         <span
@@ -169,7 +173,10 @@ function formatSignedDelta(value) {
         color="neutral"
         variant="subtle"
         size="lg"
-        class="w-full px-2 py-1.5"
+        :class="[
+          'w-full px-2 py-1.5',
+          r.delta < 0 ? 'animate-pulse ring-1 ring-error/70 bg-error/10' : '',
+        ]"
       >
         <div class="flex w-full min-w-0 flex-col gap-0.5">
           <div class="flex items-center justify-between gap-1">

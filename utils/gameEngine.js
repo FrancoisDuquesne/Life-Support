@@ -22,6 +22,7 @@ import {
   checkPopulationGrowth,
   createInitialColonists,
 } from '~/utils/colonistEngine'
+import { hexNeighbors } from '~/utils/hex'
 
 export const GRID_WIDTH = 64
 export const GRID_HEIGHT = 64
@@ -48,6 +49,18 @@ const WASTE_REDUCTION_PER_RECYCLER = 3
 export const WASTE_OVERFLOW_PENALTY = 0.75
 
 export const BUILDING_TYPES = [
+  {
+    id: 'MDV_LANDING_SITE',
+    name: 'MDV Landing Site',
+    maxHp: 999,
+    description: 'Mars Descent Vehicle and landing platform',
+    cost: {},
+    produces: {},
+    consumes: {},
+    buildable: false,
+    footprintSize: 5,
+    special: 'Starting structure',
+  },
   {
     id: 'SOLAR_PANEL',
     name: 'Solar Panel',
@@ -83,6 +96,7 @@ export const BUILDING_TYPES = [
     cost: { minerals: 8 },
     produces: { minerals: 2 },
     consumes: { energy: 3 },
+    footprintSize: 2,
   },
   {
     id: 'HABITAT',
@@ -92,6 +106,7 @@ export const BUILDING_TYPES = [
     cost: { minerals: 25, water: 10 },
     produces: {},
     consumes: { energy: 2 },
+    footprintSize: 2,
   },
   {
     id: 'OXYGEN_GENERATOR',
@@ -121,6 +136,7 @@ export const BUILDING_TYPES = [
     produces: {},
     consumes: { energy: 2 },
     special: 'Reduces waste by 3/tick',
+    footprintSize: 3,
   },
   {
     id: 'REPAIR_STATION',
@@ -138,6 +154,46 @@ const BUILDING_MAP = Object.fromEntries(BUILDING_TYPES.map((b) => [b.id, b]))
 
 function cellKey(x, y) {
   return x + ',' + y
+}
+
+function collectFootprintCells(x, y, footprintSize) {
+  const target = Math.max(1, footprintSize || 1)
+  const cells = [{ x, y }]
+  if (target === 1) return cells
+
+  const queue = [{ x, y }]
+  const seen = new Set([cellKey(x, y)])
+
+  while (queue.length > 0 && cells.length < target) {
+    const current = queue.shift()
+    const neighbors = hexNeighbors(current.x, current.y)
+    for (const [nx, ny] of neighbors) {
+      const key = cellKey(nx, ny)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const next = { x: nx, y: ny }
+      cells.push(next)
+      queue.push(next)
+      if (cells.length >= target) break
+    }
+  }
+
+  return cells
+}
+
+export function getFootprintCellsForType(type, x, y) {
+  const buildingType = BUILDING_MAP[type]
+  if (!buildingType) return []
+  return collectFootprintCells(x, y, buildingType.footprintSize)
+}
+
+function getBuildingCells(pb) {
+  if (Array.isArray(pb.cells) && pb.cells.length > 0) return pb.cells
+  return [{ x: pb.x, y: pb.y }]
+}
+
+function createCollapseReason(cause, hint) {
+  return { cause, hint }
 }
 
 function isBuildingActive(pb, tickCount) {
@@ -178,6 +234,23 @@ export function createColonyState() {
     wasteCapacity: 50,
   }
   state.colonists = createInitialColonists(state)
+  const centerX = Math.floor(GRID_WIDTH / 2)
+  const centerY = Math.floor(GRID_HEIGHT / 2)
+  const mdvCells = collectFootprintCells(centerX, centerY, 5)
+  state.placedBuildings.push({
+    id: state.nextBuildingId++,
+    type: 'MDV_LANDING_SITE',
+    x: centerX,
+    y: centerY,
+    cells: mdvCells,
+    disabledUntilTick: 0,
+    hp: 999,
+    maxHp: 999,
+  })
+  state.buildings.mdv_landing_site = 1
+  for (const cell of mdvCells) {
+    state.occupiedCells.add(cellKey(cell.x, cell.y))
+  }
   return state
 }
 
@@ -319,10 +392,13 @@ export function processTick(state, terrainMap, revealedTiles) {
 
   // 5. Remove dead buildings (hp <= 0) + morale penalty
   const deadBuildings = state.placedBuildings.filter(
-    (pb) => pb.hp !== undefined && pb.hp <= 0,
+    (pb) =>
+      pb.type !== 'MDV_LANDING_SITE' && pb.hp !== undefined && pb.hp <= 0,
   )
   for (const dead of deadBuildings) {
-    state.occupiedCells.delete(cellKey(dead.x, dead.y))
+    for (const cell of getBuildingCells(dead)) {
+      state.occupiedCells.delete(cellKey(cell.x, cell.y))
+    }
     state.buildings[dead.type.toLowerCase()] = Math.max(
       0,
       (state.buildings[dead.type.toLowerCase()] || 0) - 1,
@@ -352,7 +428,11 @@ export function processTick(state, terrainMap, revealedTiles) {
   // Hard fail when no humans remain.
   if (state.colonists && state.colonists.length === 0) {
     state.alive = false
-    events += 'COLONY COLLAPSED: No colonists remaining! '
+    state.collapseReason = createCollapseReason(
+      'All colonists have died.',
+      'Stabilize food, water, and oxygen before expanding your colony footprint.',
+    )
+    events += `COLONY COLLAPSED: ${state.collapseReason.cause} `
     return {
       tick: state.tickCount,
       events,
@@ -429,16 +509,42 @@ export function processTick(state, terrainMap, revealedTiles) {
   }
 
   if (state.resources.oxygen <= 0) {
-    state.alive = false
     state.resources.oxygen = Math.max(0, state.resources.oxygen)
-    events += 'COLONY COLLAPSED: Suffocation! '
-  } else if (state.resources.water <= 0) {
-    state.alive = false
+    if (state.colonists && state.colonists.length > 0) {
+      events += 'CRITICAL: Oxygen depleted — all colonists suffocated instantly. '
+      state.colonists = []
+    }
+  }
+
+  if (state.resources.water <= 0) {
     state.resources.water = Math.max(0, state.resources.water)
-    events += 'COLONY COLLAPSED: Dehydration! '
-  } else if (state.resources.energy < 0) {
+    events += 'WARNING: No water reserves — severe dehydration risk! '
+  }
+
+  if (state.resources.energy < 0) {
     state.resources.energy = 0
     events += 'WARNING: Power shortage! '
+  }
+
+  if (state.colonists && state.colonists.length === 0) {
+    state.alive = false
+    if (state.resources.oxygen <= 0) {
+      state.collapseReason = createCollapseReason(
+        'All colonists died from oxygen loss.',
+        'Prioritize Oxygen Generators and keep a buffer of water + energy to avoid chain failures.',
+      )
+    } else if (state.resources.water <= 0) {
+      state.collapseReason = createCollapseReason(
+        'All colonists died from dehydration.',
+        'Secure Water Extractors early and keep backup energy so extraction never halts.',
+      )
+    } else {
+      state.collapseReason = createCollapseReason(
+        'All colonists have died.',
+        'Watch warning events and keep food, water, and oxygen safely above demand.',
+      )
+    }
+    events += `COLONY COLLAPSED: ${state.collapseReason.cause} `
   }
 
   // 12. Waste overflow warning
@@ -478,6 +584,13 @@ export function buildAt(state, type, x, y, terrainMap) {
       colonyState: toSnapshot(state),
     }
   }
+  if (bType.buildable === false) {
+    return {
+      success: false,
+      message: `${bType.name} cannot be built manually`,
+      colonyState: toSnapshot(state),
+    }
+  }
   if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) {
     return {
       success: false,
@@ -485,11 +598,21 @@ export function buildAt(state, type, x, y, terrainMap) {
       colonyState: toSnapshot(state),
     }
   }
-  if (state.occupiedCells.has(cellKey(x, y))) {
-    return {
-      success: false,
-      message: `Cell (${x},${y}) is already occupied`,
-      colonyState: toSnapshot(state),
+  const footprint = collectFootprintCells(x, y, bType.footprintSize)
+  for (const cell of footprint) {
+    if (cell.x < 0 || cell.x >= GRID_WIDTH || cell.y < 0 || cell.y >= GRID_HEIGHT) {
+      return {
+        success: false,
+        message: `${bType.name} footprint does not fit on map`,
+        colonyState: toSnapshot(state),
+      }
+    }
+    if (state.occupiedCells.has(cellKey(cell.x, cell.y))) {
+      return {
+        success: false,
+        message: `Cell (${cell.x},${cell.y}) is already occupied`,
+        colonyState: toSnapshot(state),
+      }
     }
   }
 
@@ -517,12 +640,15 @@ export function buildAt(state, type, x, y, terrainMap) {
     type: bType.id,
     x,
     y,
+    cells: footprint,
     disabledUntilTick: 0,
     hp: bType.maxHp,
     maxHp: bType.maxHp,
   }
   state.placedBuildings.push(placed)
-  state.occupiedCells.add(cellKey(x, y))
+  for (const cell of footprint) {
+    state.occupiedCells.add(cellKey(cell.x, cell.y))
+  }
   state.buildings[bType.id.toLowerCase()] =
     (state.buildings[bType.id.toLowerCase()] || 0) + 1
 
@@ -561,6 +687,7 @@ export function toSnapshot(state) {
     terrainSeed: state.terrainSeed,
     waste: state.waste || 0,
     wasteCapacity: state.wasteCapacity || 50,
+    collapseReason: state.collapseReason ? { ...state.collapseReason } : null,
     activeEvents: (state.activeEvents || []).map((e) => ({
       ...e,
       data: { ...e.data },
@@ -573,6 +700,7 @@ export function toSnapshot(state) {
       disabledUntilTick: pb.disabledUntilTick || 0,
       hp: pb.hp !== undefined ? pb.hp : 100,
       maxHp: pb.maxHp || 100,
+      cells: getBuildingCells(pb).map((c) => ({ x: c.x, y: c.y })),
     })),
     colonists: colonists.map((c) => ({ ...c })),
     lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
@@ -604,5 +732,7 @@ export function getBuildingsInfo() {
     consumes: { ...b.consumes },
     maxHp: b.maxHp,
     special: b.special || null,
+    footprintSize: b.footprintSize || 1,
+    buildable: b.buildable !== false,
   }))
 }
