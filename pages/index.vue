@@ -641,21 +641,36 @@ onMounted(() => {
     <Teleport to="body">
       <div
         v-if="contextMenu.open"
-        @click.self="contextMenu.open = false"
+        @click="contextMenu.open = false"
+        @contextmenu.prevent
         style="position: fixed; inset: 0; z-index: 9998"
       >
-        <div
+        <UCard
           :style="{
             position: 'fixed',
             left: contextMenu.x + 'px',
             top: contextMenu.y + 'px',
             zIndex: 9999,
+            minWidth: '200px',
           }"
+          @click.stop
+          :ui="{ body: 'p-1' }"
         >
-          <UContextMenu v-model:open="contextMenu.open" :items="contextMenuItems">
-            <div style="width: 1px; height: 1px"></div>
-          </UContextMenu>
-        </div>
+          <div class="flex flex-col gap-0.5">
+            <UButton
+              v-for="(item, idx) in contextMenuItems"
+              :key="idx"
+              :label="item.label"
+              :icon="item.icon"
+              :color="item.color"
+              :disabled="item.disabled"
+              variant="ghost"
+              block
+              class="justify-start"
+              @click="item.onSelect"
+            />
+          </div>
+        </UCard>
       </div>
     </Teleport>
   </div>
