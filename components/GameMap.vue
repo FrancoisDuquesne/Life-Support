@@ -9,6 +9,7 @@ import {
   hexPath,
   drawRocks,
   drawBuilding,
+  drawFootprintBuilding,
   drawHPBar,
   drawTerrainOverlay,
   drawEventOverlay,
@@ -50,11 +51,82 @@ function getFootprintRenderMetrics(cells, z, ox, oy, hexS) {
   const footprintW = maxCx - minCx + hexS * 1.7
   const footprintH = maxCy - minCy + hexS * 1.7
   const iconSize = Math.max(
-    HEX_H * z * 0.95,
-    Math.min(footprintW, footprintH) * (cells.length > 1 ? 0.92 : 0.8),
+    HEX_H * z * 0.88,
+    Math.min(footprintW, footprintH) * (cells.length > 1 ? 0.9 : 0.82),
   )
   const hpAnchorCy = maxCy
   return { cx, cy, iconSize, hpAnchorCy }
+}
+
+const SINGLE_TILE_ROTATIONS = {
+  SOLAR_PANEL: Math.PI / 6,
+  MINE: Math.PI / 6,
+  HABITAT: Math.PI / 6,
+  REPAIR_STATION: Math.PI / 6,
+}
+
+const MULTI_TILE_OFFSETS = {
+  RECYCLING_CENTER: Math.PI / 6,
+}
+
+function normalizeAngle(angle) {
+  let a = angle
+  while (a <= -Math.PI) a += Math.PI * 2
+  while (a > Math.PI) a -= Math.PI * 2
+  return a
+}
+
+function angleDistance(a, b) {
+  return Math.abs(normalizeAngle(a - b))
+}
+
+function getBuildingRotation(type, cells, anchor, z, ox, oy) {
+  if (!cells || cells.length < 2) return SINGLE_TILE_ROTATIONS[type] || 0
+
+  const centers = cells.map((cell) => ({
+    x: hexScreenX(cell.x, z, ox),
+    y: hexScreenY(cell.x, cell.y, z, oy),
+  }))
+  const count = centers.length
+  const meanX = centers.reduce((sum, p) => sum + p.x, 0) / count
+  const meanY = centers.reduce((sum, p) => sum + p.y, 0) / count
+
+  let xx = 0
+  let xy = 0
+  let yy = 0
+  for (const p of centers) {
+    const dx = p.x - meanX
+    const dy = p.y - meanY
+    xx += dx * dx
+    xy += dx * dy
+    yy += dy * dy
+  }
+
+  const trace = xx + yy
+  const spread = Math.sqrt((xx - yy) * (xx - yy) + 4 * xy * xy)
+  const major = (trace + spread) / 2
+  const minor = (trace - spread) / 2
+  if (major <= 1e-6 || (major - minor) / major < 0.12)
+    return MULTI_TILE_OFFSETS[type] || 0
+
+  // Align to the hex lattice directions (30-degree increments in screen space).
+  const raw = 0.5 * Math.atan2(2 * xy, xx - yy)
+  const snap = Math.PI / 6
+  const base = Math.round(raw / snap) * snap + (MULTI_TILE_OFFSETS[type] || 0)
+
+  // PCA gives an undirected axis (theta == theta + pi). Use anchor to choose a stable facing.
+  if (type === 'RECYCLING_CENTER' && anchor) {
+    const anchorX = hexScreenX(anchor.x, z, ox)
+    const anchorY = hexScreenY(anchor.x, anchor.y, z, oy)
+    const desiredTopDir = Math.atan2(anchorY - meanY, anchorX - meanX)
+    const topA = base - Math.PI / 2
+    const topB = topA + Math.PI
+    return angleDistance(topA, desiredTopDir) <= angleDistance(topB, desiredTopDir)
+      ? base
+      : base + Math.PI
+  }
+
+  return base
 }
 
 function drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, type) {
@@ -69,6 +141,30 @@ function drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, type) {
   for (const cell of visibleCells) {
     const ccx = hexScreenX(cell.x, z, ox)
     const ccy = hexScreenY(cell.x, cell.y, z, oy)
+    if (isLandingSite) {
+      ctx.save()
+      // Scorched terrain under the landing footprint.
+      const scorch = ctx.createRadialGradient(
+        ccx,
+        ccy,
+        hexS * 0.05,
+        ccx,
+        ccy,
+        hexS * 0.95,
+      )
+      scorch.addColorStop(0, 'rgba(58, 29, 19, 0.52)')
+      scorch.addColorStop(0.65, 'rgba(46, 24, 16, 0.34)')
+      scorch.addColorStop(1, 'rgba(23, 12, 9, 0.12)')
+      ctx.fillStyle = scorch
+      hexPath(ctx, ccx, ccy, hexS * 0.95)
+      ctx.fill()
+
+      ctx.strokeStyle = 'rgba(72, 40, 26, 0.52)'
+      ctx.lineWidth = 1.1
+      hexPath(ctx, ccx, ccy, hexS * 0.84)
+      ctx.stroke()
+      ctx.restore()
+    }
     hexPath(ctx, ccx, ccy, hexS * (isLandingSite ? 0.9 : 0.84))
     ctx.fill()
     ctx.stroke()
@@ -323,22 +419,49 @@ function render() {
           (!revealed || revealed.has(cell.x + ',' + cell.y)),
       )
       if (visibleCells.length === 0) return
+      let drewTileCenteredFootprint = false
       if (cells.length > 1) {
         drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, b.type)
+        if (b.type === 'RECYCLING_CENTER' || b.type === 'MINE') {
+          drewTileCenteredFootprint = drawFootprintBuilding(
+            ctx,
+            b.type,
+            visibleCells,
+            z,
+            ox,
+            oy,
+            hexS,
+            1,
+          )
+        }
       }
       const metrics = getFootprintRenderMetrics(cells, z, ox, oy, hexS)
-      drawBuilding(
-        ctx,
-        b.type,
-        metrics.cx - metrics.iconSize / 2,
-        metrics.cy - metrics.iconSize / 2,
-        metrics.iconSize,
-        1,
-      )
+      if (!drewTileCenteredFootprint) {
+        const rotation = getBuildingRotation(
+          b.type,
+          cells,
+          { x: b.x, y: b.y },
+          z,
+          ox,
+          oy,
+        )
+        drawBuilding(
+          ctx,
+          b.type,
+          metrics.cx - metrics.iconSize / 2,
+          metrics.cy - metrics.iconSize / 2,
+          metrics.iconSize,
+          1,
+          rotation,
+        )
+      }
       drawHPBar(
         ctx,
         metrics.cx,
-        metrics.hpAnchorCy,
+        (b.type === 'MINE' || b.type === 'RECYCLING_CENTER') &&
+        cells.length > 1
+          ? metrics.cy - hexS * 0.45
+          : metrics.hpAnchorCy,
         hexS,
         b.hp ?? 100,
         b.maxHp ?? 100,
@@ -429,14 +552,39 @@ function render() {
         drawBuildingFootprint(ctx, visibleFootprint, z, ox, oy, hexS, sel)
       }
       const metrics = getFootprintRenderMetrics(footprint, z, ox, oy, hexS)
-      drawBuilding(
-        ctx,
-        sel,
-        metrics.cx - metrics.iconSize / 2,
-        metrics.cy - metrics.iconSize / 2,
-        metrics.iconSize,
-        isOccupied ? 0.3 : 0.6,
-      )
+      const drewTileCenteredFootprint =
+        (sel === 'RECYCLING_CENTER' || sel === 'MINE') &&
+        footprint.length > 1 &&
+        visibleFootprint.length > 0 &&
+        drawFootprintBuilding(
+          ctx,
+          sel,
+          visibleFootprint,
+          z,
+          ox,
+          oy,
+          hexS,
+          isOccupied ? 0.3 : 0.6,
+        )
+      if (!drewTileCenteredFootprint) {
+        const rotation = getBuildingRotation(
+          sel,
+          footprint,
+          { x: hover.gx, y: hover.gy },
+          z,
+          ox,
+          oy,
+        )
+        drawBuilding(
+          ctx,
+          sel,
+          metrics.cx - metrics.iconSize / 2,
+          metrics.cy - metrics.iconSize / 2,
+          metrics.iconSize,
+          isOccupied ? 0.3 : 0.6,
+          rotation,
+        )
+      }
     }
   }
 
@@ -480,7 +628,10 @@ const canvasCursor = computed(() => {
     return 'crosshair'
 
   // Check if tile is revealed
-  if (props.revealedTiles && !props.revealedTiles.has(hover.gx + ',' + hover.gy))
+  if (
+    props.revealedTiles &&
+    !props.revealedTiles.has(hover.gx + ',' + hover.gy)
+  )
     return 'crosshair'
 
   // Check if there's a building at this tile

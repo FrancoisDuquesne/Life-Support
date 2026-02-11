@@ -1,9 +1,29 @@
 // localStorage save/load for colony state + revealed tiles
 import { FIRST_NAMES, LAST_NAMES, ROLES } from '~/utils/colonistEngine'
 import { mulberry32 } from '~/utils/hex'
+import { getFootprintCellsForType } from '~/utils/gameEngine'
 
 const SAVE_KEY = 'life-support-save'
 const SAVE_VERSION = 4
+
+function normalizePlacedBuilding(pb) {
+  const fallbackCells = getFootprintCellsForType(pb.type, pb.x, pb.y)
+  const forceFootprint = pb.type === 'MDV_LANDING_SITE'
+  const cells =
+    !forceFootprint && Array.isArray(pb.cells) && pb.cells.length > 0
+      ? pb.cells
+      : fallbackCells
+  return {
+    id: pb.id,
+    type: pb.type,
+    x: pb.x,
+    y: pb.y,
+    cells: cells.map((c) => ({ x: c.x, y: c.y })),
+    disabledUntilTick: pb.disabledUntilTick || 0,
+    hp: pb.hp !== undefined ? pb.hp : 100,
+    maxHp: pb.maxHp || 100,
+  }
+}
 
 /**
  * Persist colony state and revealed tiles to localStorage.
@@ -15,15 +35,7 @@ export function saveGame(state, revealedTiles) {
       name: state.name,
       resources: state.resources,
       buildings: state.buildings,
-      placedBuildings: state.placedBuildings.map((pb) => ({
-        id: pb.id,
-        type: pb.type,
-        x: pb.x,
-        y: pb.y,
-        disabledUntilTick: pb.disabledUntilTick || 0,
-        hp: pb.hp !== undefined ? pb.hp : 100,
-        maxHp: pb.maxHp || 100,
-      })),
+      placedBuildings: state.placedBuildings.map(normalizePlacedBuilding),
       nextBuildingId: state.nextBuildingId,
       colonists: (state.colonists || []).map((c) => ({ ...c })),
       nextColonistId: state.nextColonistId || 1,
@@ -153,17 +165,21 @@ export function loadGame() {
     if (data.v !== SAVE_VERSION) return null
 
     const s = data.state
+    const placedBuildings = (s.placedBuildings || []).map(normalizePlacedBuilding)
+
     // Rebuild occupiedCells Set from placedBuildings
     const occupiedCells = new Set()
-    for (const pb of s.placedBuildings) {
-      occupiedCells.add(pb.x + ',' + pb.y)
+    for (const pb of placedBuildings) {
+      for (const cell of pb.cells) {
+        occupiedCells.add(cell.x + ',' + cell.y)
+      }
     }
 
     const state = {
       name: s.name,
       resources: s.resources,
       buildings: s.buildings,
-      placedBuildings: s.placedBuildings,
+      placedBuildings,
       occupiedCells,
       nextBuildingId: s.nextBuildingId,
       colonists: s.colonists || [],
