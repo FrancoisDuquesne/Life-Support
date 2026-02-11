@@ -22,7 +22,7 @@ const props = defineProps({
   gridWidth: Number,
   gridHeight: Number,
   onTileClick: Function,
-  onTileDelete: Function,
+  onContextMenu: Function,
   revealedTiles: Object,
   terrainMap: Array,
   activeEvents: Array,
@@ -450,7 +450,7 @@ function render() {
 
 function handleContextMenu(e) {
   const canvas = canvasRef.value
-  if (!canvas || !props.onTileDelete) return
+  if (!canvas || !props.onContextMenu) return
   const rect = canvas.getBoundingClientRect()
   const x = e.clientX - rect.left
   const y = e.clientY - rect.top
@@ -458,7 +458,9 @@ function handleContextMenu(e) {
   const gw = props.gridWidth || 32
   const gh = props.gridHeight || 32
   if (grid.gx < 0 || grid.gx >= gw || grid.gy < 0 || grid.gy >= gh) return
-  props.onTileDelete(grid.gx, grid.gy)
+
+  // Pass grid coords + screen coords for menu positioning
+  props.onContextMenu(grid.gx, grid.gy, e.clientX, e.clientY)
 }
 
 function handleResize() {

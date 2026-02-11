@@ -42,6 +42,13 @@ const colonistsPanelRef = ref(null)
 const eventToast = ref(null)
 let toastTimer = null
 
+const contextMenu = ref({
+  open: false,
+  x: 0,
+  y: 0,
+  building: null,
+})
+
 const collapseSummary = computed(() => {
   const reason = colony.state.value && colony.state.value.collapseReason
   if (reason && reason.cause) return reason.cause
@@ -156,6 +163,33 @@ const hoverBuildingInfo = computed(() => {
   }
 })
 
+const contextMenuItems = computed(() => {
+  const building = contextMenu.value.building
+  if (!building) return []
+
+  const bInfo = colony.buildingsInfo.value.find((b) => b.id === building.type)
+  const isMDV = building.type === 'MDV_LANDING_SITE'
+
+  return [
+    {
+      label: `Demolish ${bInfo?.name || building.type}`,
+      icon: 'i-heroicons-trash',
+      color: 'error',
+      disabled: isMDV,
+      onSelect: () => {
+        if (!isMDV) {
+          colony.demolishAt(building.x, building.y)
+          interaction.clearSelection()
+        }
+        contextMenu.value.open = false
+      },
+    },
+    // Future actions:
+    // { label: 'Upgrade', icon: 'i-heroicons-arrow-up', disabled: true },
+    // { label: 'Repair', icon: 'i-heroicons-wrench', disabled: true },
+  ]
+})
+
 const mapAreaRef = ref(null)
 const hoverCursor = ref(null)
 
@@ -209,6 +243,29 @@ async function onTileDelete(gx, gy) {
   const result = await colony.demolishAt(gx, gy)
   if (result && result.success) {
     interaction.clearSelection()
+  }
+}
+
+function onContextMenu(gx, gy, screenX, screenY) {
+  if (!colony.state.value || !colony.state.value.alive) return
+  if (!colony.revealedTiles.value.has(gx + ',' + gy)) return
+
+  // Find building at clicked coordinates
+  const placed = colony.state.value.placedBuildings || []
+  const building = placed.find((b) =>
+    b.cells && b.cells.length > 0
+      ? b.cells.some((cell) => cell.x === gx && cell.y === gy)
+      : b.x === gx && b.y === gy,
+  )
+
+  if (!building) return // No building at this location
+
+  // Open context menu
+  contextMenu.value = {
+    open: true,
+    x: screenX,
+    y: screenY,
+    building: building,
   }
 }
 
@@ -375,7 +432,7 @@ onMounted(() => {
           :grid-width="colony.gridWidth.value"
           :grid-height="colony.gridHeight.value"
           :on-tile-click="onTileClick"
-          :on-tile-delete="onTileDelete"
+          :on-context-menu="onContextMenu"
           :revealed-tiles="colony.revealedTiles.value"
           :terrain-map="colony.terrainMap.value"
           :active-events="colony.activeEvents.value"
@@ -579,6 +636,28 @@ onMounted(() => {
         </div>
       </template>
     </UModal>
+
+    <!-- Building Context Menu -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenu.open"
+        @click.self="contextMenu.open = false"
+        style="position: fixed; inset: 0; z-index: 9998"
+      >
+        <div
+          :style="{
+            position: 'fixed',
+            left: contextMenu.x + 'px',
+            top: contextMenu.y + 'px',
+            zIndex: 9999,
+          }"
+        >
+          <UContextMenu v-model:open="contextMenu.open" :items="contextMenuItems">
+            <div style="width: 1px; height: 1px"></div>
+          </UContextMenu>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 <style scoped>

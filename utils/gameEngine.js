@@ -22,7 +22,7 @@ import {
   checkPopulationGrowth,
   createInitialColonists,
 } from '~/utils/colonistEngine'
-import { hexNeighbors } from '~/utils/hex'
+import { hexNeighbors, hexDistance, hexesInRadius } from '~/utils/hex'
 
 export const GRID_WIDTH = 64
 export const GRID_HEIGHT = 64
@@ -217,7 +217,39 @@ function getPopulation(state) {
 }
 
 /**
- * Create a fresh colony state object.
+ * Calculate terrain quality score at a location for MDV landing site.
+ * Returns 0.0 (poor) to 1.0 (excellent) based on plains tiles, hazards, and nearby deposits.
+ */
+function calculateLandingSiteQuality(terrainMap, x, y) {
+  if (!terrainMap) return 0.5
+
+  const radius = 3
+  let plainsCount = 0
+  let totalCount = 0
+  let hazardPenalty = 0
+  let depositBonus = 0
+
+  // Check tiles in radius using hexesInRadius from hex.js
+  const tiles = hexesInRadius(x, y, radius, GRID_WIDTH, GRID_HEIGHT)
+
+  for (const [tx, ty] of tiles) {
+    const tile = getTerrainAt(terrainMap, tx, ty, GRID_WIDTH)
+    if (!tile) continue
+
+    totalCount++
+    if (tile.terrain?.id === 'PLAINS') plainsCount++
+    if (tile.hazard) hazardPenalty += 0.15
+    if (tile.deposit && hexDistance(x, y, tx, ty) <= 2) depositBonus += 0.1
+  }
+
+  const plainsRatio = totalCount > 0 ? plainsCount / totalCount : 0
+  const score = Math.max(0, Math.min(1, plainsRatio + depositBonus - hazardPenalty))
+
+  return score
+}
+
+/**
+ * Find optimal landing site for MDV - closest plains tile to center without hazards.
  */
 function findLandingSite(terrainMap) {
   const centerX = Math.floor(GRID_WIDTH / 2)
@@ -269,7 +301,20 @@ export function createColonyState(options = {}) {
   }
   state.colonists = createInitialColonists(state)
   const landing = findLandingSite(options.terrainMap)
-  const mdvCells = collectFootprintCells(landing.x, landing.y, 5)
+
+  // Calculate terrain quality at landing site to determine MDV footprint size
+  const quality = calculateLandingSiteQuality(
+    options.terrainMap,
+    landing.x,
+    landing.y,
+  )
+
+  // Map quality to footprint size: poor=4, average=5, good=6
+  let mdvFootprintSize = 5 // default
+  if (quality < 0.33) mdvFootprintSize = 4
+  else if (quality >= 0.67) mdvFootprintSize = 6
+
+  const mdvCells = collectFootprintCells(landing.x, landing.y, mdvFootprintSize)
   state.placedBuildings.push({
     id: state.nextBuildingId++,
     type: 'MDV_LANDING_SITE',
