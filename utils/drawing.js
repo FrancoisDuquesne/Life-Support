@@ -11,6 +11,7 @@ export const BUILDING_COLORS = {
   RTG: { fill: '#a855f7', accent: '#c084fc' },
   RECYCLING_CENTER: { fill: '#84cc16', accent: '#a3e635' },
   REPAIR_STATION: { fill: '#ef4444', accent: '#f87171' },
+  PIPELINE: { fill: '#94a3b8', accent: '#e2e8f0' },
   MDV_LANDING_SITE: { fill: '#64748b', accent: '#e2e8f0' },
 }
 
@@ -775,6 +776,26 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
         ctx.arc(px, py, podR * 0.35, 0, Math.PI * 2)
         ctx.fill()
       }
+      break
+    }
+
+    case 'PIPELINE': {
+      const nodeR = r * 0.52
+      ctx.fillStyle = '#0f172a'
+      ctx.beginPath()
+      ctx.arc(cx, cy, nodeR, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.strokeStyle = '#cbd5e1'
+      ctx.lineWidth = Math.max(1.2, r * 0.09)
+      ctx.beginPath()
+      ctx.arc(cx, cy, nodeR, 0, Math.PI * 2)
+      ctx.stroke()
+
+      ctx.fillStyle = '#1e293b'
+      ctx.beginPath()
+      ctx.arc(cx, cy, nodeR * 0.46, 0, Math.PI * 2)
+      ctx.fill()
       break
     }
 

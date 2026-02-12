@@ -48,8 +48,9 @@ const WASTE_REDUCTION_PER_RECYCLER = 3
 // Production penalty when waste overflows
 export const WASTE_OVERFLOW_PENALTY = 0.75
 const MDV_FOOTPRINT_SIZE = 7
-const MAX_BUILD_RADIUS_FROM_COLONY = 7
+const MAX_BUILD_RADIUS_FROM_COLONY = 5
 const MAX_UPGRADE_LEVEL = 3
+const PIPELINE_RESOURCES = ['energy', 'water', 'oxygen']
 
 export const BUILDING_TYPES = [
   {
@@ -63,6 +64,17 @@ export const BUILDING_TYPES = [
     buildable: false,
     footprintSize: MDV_FOOTPRINT_SIZE,
     special: 'Starting structure',
+  },
+  {
+    id: 'PIPELINE',
+    name: 'Pipeline',
+    maxHp: 80,
+    description:
+      'Resource conduit that carries adjacent water, oxygen, and energy',
+    cost: { minerals: 2 },
+    produces: {},
+    consumes: {},
+    buildTime: 1,
   },
   {
     id: 'SOLAR_PANEL',
@@ -204,6 +216,16 @@ function getBuildingCells(pb) {
   return [{ x: pb.x, y: pb.y }]
 }
 
+function hasOccupiedCell(state, x, y) {
+  const key = cellKey(x, y)
+  if (state?.occupiedCells && typeof state.occupiedCells.has === 'function') {
+    return state.occupiedCells.has(key)
+  }
+  return (state?.placedBuildings || []).some((pb) =>
+    getBuildingCells(pb).some((c) => c.x === x && c.y === y),
+  )
+}
+
 function createCollapseReason(cause, hint) {
   return { cause, hint }
 }
@@ -237,6 +259,96 @@ function isWithinBuildRadius(state, footprint) {
   )
 }
 
+function isPipeline(pb) {
+  return pb?.type === 'PIPELINE'
+}
+
+function computePipelineNetworks(state) {
+  const pipelines = (state.placedBuildings || []).filter(isPipeline)
+  const byKey = new Map()
+  for (const pb of pipelines) {
+    byKey.set(cellKey(pb.x, pb.y), pb)
+  }
+
+  const visited = new Set()
+  const networks = []
+  const resourceTypes = new Set(PIPELINE_RESOURCES)
+
+  for (const pb of pipelines) {
+    const key = cellKey(pb.x, pb.y)
+    if (visited.has(key)) continue
+
+    const queue = [pb]
+    const cells = []
+    const cellSet = new Set()
+    const resources = new Set()
+
+    while (queue.length > 0) {
+      const cur = queue.shift()
+      const curKey = cellKey(cur.x, cur.y)
+      if (visited.has(curKey)) continue
+      visited.add(curKey)
+      cells.push({ x: cur.x, y: cur.y })
+      cellSet.add(curKey)
+
+      for (const [nx, ny] of hexNeighbors(cur.x, cur.y)) {
+        const nKey = cellKey(nx, ny)
+        const np = byKey.get(nKey)
+        if (np && !visited.has(nKey)) queue.push(np)
+      }
+    }
+
+    for (const b of state.placedBuildings || []) {
+      if (isPipeline(b)) continue
+      if (!isBuildingActive(b, state.tickCount)) continue
+      if (isUnderConstruction(b)) continue
+      const bType = BUILDING_MAP[b.type]
+      if (!bType) continue
+      const adjacentToNetwork = buildingTouchesPipelineNetwork(b, cellSet)
+      if (!adjacentToNetwork) continue
+      for (const res of Object.keys(bType.produces || {})) {
+        if (resourceTypes.has(res)) resources.add(res)
+      }
+    }
+
+    networks.push({ cells, cellSet, resources })
+  }
+
+  return networks
+}
+
+function isAdjacentToPipeline(state, x, y) {
+  return (state.placedBuildings || []).some(
+    (pb) => pb.type === 'PIPELINE' && hexDistance(pb.x, pb.y, x, y) <= 1,
+  )
+}
+
+function isAdjacentToExistingStructure(state, x, y) {
+  return (state.placedBuildings || []).some((pb) =>
+    getBuildingCells(pb).some((cell) => hexDistance(cell.x, cell.y, x, y) <= 1),
+  )
+}
+
+function buildingTouchesPipelineNetwork(pb, cellSet) {
+  return getBuildingCells(pb).some((cell) =>
+    hexNeighbors(cell.x, cell.y).some(([nx, ny]) => cellSet.has(cellKey(nx, ny))),
+  )
+}
+
+function canBuildingAccessPipelineResources(state, pb, bType, networks) {
+  const needed = Object.keys(bType.consumes || {}).filter((res) =>
+    PIPELINE_RESOURCES.includes(res),
+  )
+  if (needed.length === 0) return true
+  const adjacentNetworks = networks.filter((n) =>
+    buildingTouchesPipelineNetwork(pb, n.cellSet),
+  )
+  if (adjacentNetworks.length === 0) return false
+  return needed.every((res) =>
+    adjacentNetworks.some((net) => net.resources.has(res)),
+  )
+}
+
 function syncColonistUnits(state) {
   if (!Array.isArray(state.colonistUnits)) state.colonistUnits = []
   const aliveIds = new Set((state.colonists || []).map((c) => c.id))
@@ -258,6 +370,7 @@ function syncColonistUnits(state) {
 export function getBuildableCells(state) {
   const cells = new Set()
   for (const pb of state?.placedBuildings || []) {
+    if (pb.type !== 'PIPELINE' && pb.type !== 'MDV_LANDING_SITE') continue
     for (const origin of getBuildingCells(pb)) {
       for (let y = 0; y < GRID_HEIGHT; y++) {
         for (let x = 0; x < GRID_WIDTH; x++) {
@@ -320,6 +433,115 @@ function findLandingSite(terrainMap) {
   return { x: centerX, y: centerY }
 }
 
+function canPlaceFootprint(state, footprint) {
+  for (const cell of footprint) {
+    if (
+      cell.x < 0 ||
+      cell.x >= GRID_WIDTH ||
+      cell.y < 0 ||
+      cell.y >= GRID_HEIGHT
+    ) {
+      return false
+    }
+    if (state.occupiedCells.has(cellKey(cell.x, cell.y))) return false
+  }
+  return true
+}
+
+function findOpenCellNear(state, ox, oy, minDist, maxDist, footprintSize = 1) {
+  for (let dist = Math.max(0, minDist); dist <= maxDist; dist++) {
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        if (hexDistance(ox, oy, x, y) !== dist) continue
+        const footprint = collectFootprintCells(x, y, footprintSize)
+        if (canPlaceFootprint(state, footprint)) {
+          return { x, y, footprint }
+        }
+      }
+    }
+  }
+  return null
+}
+
+function placeInstantBuilding(state, type, x, y, footprint = null) {
+  const bType = BUILDING_MAP[type]
+  if (!bType) return null
+  const cells = footprint || collectFootprintCells(x, y, bType.footprintSize)
+  if (!canPlaceFootprint(state, cells)) return null
+
+  const placed = {
+    id: state.nextBuildingId++,
+    type: bType.id,
+    x,
+    y,
+    cells,
+    disabledUntilTick: 0,
+    hp: bType.maxHp,
+    maxHp: bType.maxHp,
+    level: 1,
+    isUnderConstruction: false,
+    constructionDoneTick: state.tickCount,
+  }
+  state.placedBuildings.push(placed)
+  for (const cell of cells) {
+    state.occupiedCells.add(cellKey(cell.x, cell.y))
+  }
+  state.buildings[bType.id.toLowerCase()] =
+    (state.buildings[bType.id.toLowerCase()] || 0) + 1
+  if (bType.id === 'HABITAT') {
+    state.populationCapacity += 5
+  }
+  return placed
+}
+
+function createDeveloperBalancedStarter(state) {
+  const landing = state.placedBuildings.find((b) => b.type === 'MDV_LANDING_SITE')
+  const lx = landing?.x ?? Math.floor(GRID_WIDTH / 2)
+  const ly = landing?.y ?? Math.floor(GRID_HEIGHT / 2)
+
+  const hubSpot = findOpenCellNear(state, lx, ly, 2, 8, 1)
+  if (!hubSpot) return
+  const hub = placeInstantBuilding(state, 'PIPELINE', hubSpot.x, hubSpot.y)
+  if (!hub) return
+
+  const pipelineNodes = [{ x: hub.x, y: hub.y }]
+  for (const [nx, ny] of hexNeighbors(hub.x, hub.y)) {
+    const fp = [{ x: nx, y: ny }]
+    if (!canPlaceFootprint(state, fp)) continue
+    const branch = placeInstantBuilding(state, 'PIPELINE', nx, ny, fp)
+    if (branch) pipelineNodes.push({ x: branch.x, y: branch.y })
+    if (pipelineNodes.length >= 7) break
+  }
+
+  function findSiteNextToPipeline(type) {
+    const footprintSize = BUILDING_MAP[type]?.footprintSize || 1
+    for (const p of pipelineNodes) {
+      for (const [nx, ny] of hexNeighbors(p.x, p.y)) {
+        const footprint = collectFootprintCells(nx, ny, footprintSize)
+        if (!canPlaceFootprint(state, footprint)) continue
+        return { x: nx, y: ny, footprint }
+      }
+    }
+    return findOpenCellNear(state, lx, ly, 2, 10, footprintSize)
+  }
+
+  const starterBuildings = [
+    'SOLAR_PANEL',
+    'SOLAR_PANEL',
+    'SOLAR_PANEL',
+    'WATER_EXTRACTOR',
+    'OXYGEN_GENERATOR',
+    'HYDROPONIC_FARM',
+    'MINE',
+  ]
+
+  for (const type of starterBuildings) {
+    const site = findSiteNextToPipeline(type)
+    if (!site) continue
+    placeInstantBuilding(state, type, site.x, site.y, site.footprint)
+  }
+}
+
 export function createColonyState(options = {}) {
   const terrainSeed =
     options.terrainSeed || Math.floor(Math.random() * 2147483647)
@@ -371,6 +593,9 @@ export function createColonyState(options = {}) {
   for (const cell of mdvCells) {
     state.occupiedCells.add(cellKey(cell.x, cell.y))
   }
+  if (options.preset === 'developer-balanced') {
+    createDeveloperBalancedStarter(state)
+  }
   return state
 }
 
@@ -390,12 +615,15 @@ export function computeResourceDeltas(state, terrainMap) {
 
   let activeBuildingCount = 0
   let activeRecyclerCount = 0
+  const pipelineNetworks = computePipelineNetworks(state)
 
   for (const pb of state.placedBuildings) {
     const bType = BUILDING_MAP[pb.type]
     if (!bType) continue
     if (!isBuildingActive(pb, state.tickCount)) continue
     if (isUnderConstruction(pb)) continue
+    if (!canBuildingAccessPipelineResources(state, pb, bType, pipelineNetworks))
+      continue
 
     activeBuildingCount++
 
@@ -583,6 +811,7 @@ export function processTick(state, terrainMap, revealedTiles) {
 
   // 8. Building production & consumption
   const modifiers = getActiveModifiers(state)
+  const pipelineNetworks = computePipelineNetworks(state)
   const wasteOverflow = state.waste > state.wasteCapacity
   const wastePenalty = wasteOverflow ? WASTE_OVERFLOW_PENALTY : 1.0
 
@@ -591,6 +820,8 @@ export function processTick(state, terrainMap, revealedTiles) {
     if (!bType) continue
     if (!isBuildingActive(pb, state.tickCount)) continue
     if (isUnderConstruction(pb)) continue
+    if (!canBuildingAccessPipelineResources(state, pb, bType, pipelineNetworks))
+      continue
 
     const hpEfficiency = pb.hp !== undefined ? pb.hp / (pb.maxHp || 100) : 1
     const levelProdMult = productionMultiplierFromLevel(pb)
@@ -746,71 +977,15 @@ export function processTick(state, terrainMap, revealedTiles) {
  * Attempt to build at (x, y). Returns { success, message, colonyState }.
  */
 export function buildAt(state, type, x, y, terrainMap) {
-  const bType = BUILDING_MAP[type]
-  if (!bType) {
+  const validation = validateBuildPlacement(state, type, x, y, terrainMap)
+  if (!validation.ok) {
     return {
       success: false,
-      message: `Unknown building type: ${type}`,
+      message: validation.message,
       colonyState: toSnapshot(state),
     }
   }
-  if (bType.buildable === false) {
-    return {
-      success: false,
-      message: `${bType.name} cannot be built manually`,
-      colonyState: toSnapshot(state),
-    }
-  }
-  if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) {
-    return {
-      success: false,
-      message: `Invalid coordinates (${x},${y})`,
-      colonyState: toSnapshot(state),
-    }
-  }
-  const footprint = collectFootprintCells(x, y, bType.footprintSize)
-  if (!isWithinBuildRadius(state, footprint)) {
-    return {
-      success: false,
-      message: `Must build within ${MAX_BUILD_RADIUS_FROM_COLONY} hexes of colony`,
-      colonyState: toSnapshot(state),
-    }
-  }
-  for (const cell of footprint) {
-    if (
-      cell.x < 0 ||
-      cell.x >= GRID_WIDTH ||
-      cell.y < 0 ||
-      cell.y >= GRID_HEIGHT
-    ) {
-      return {
-        success: false,
-        message: `${bType.name} footprint does not fit on map`,
-        colonyState: toSnapshot(state),
-      }
-    }
-    if (state.occupiedCells.has(cellKey(cell.x, cell.y))) {
-      return {
-        success: false,
-        message: `Cell (${cell.x},${cell.y}) is already occupied`,
-        colonyState: toSnapshot(state),
-      }
-    }
-  }
-
-  const tile = getTerrainAt(terrainMap, x, y, GRID_WIDTH)
-  const costMult = getPlacementCostMultiplier(tile)
-
-  for (const [res, amt] of Object.entries(bType.cost)) {
-    const adjustedCost = res === 'minerals' ? Math.ceil(amt * costMult) : amt
-    if ((state.resources[res] || 0) < adjustedCost) {
-      return {
-        success: false,
-        message: `Not enough resources to build ${bType.name}`,
-        colonyState: toSnapshot(state),
-      }
-    }
-  }
+  const { bType, tile, costMult, footprint } = validation
 
   for (const [res, amt] of Object.entries(bType.cost)) {
     const adjustedCost = res === 'minerals' ? Math.ceil(amt * costMult) : amt
@@ -852,6 +1027,76 @@ export function buildAt(state, type, x, y, terrainMap) {
     message,
     colonyState: toSnapshot(state),
   }
+}
+
+export function validateBuildPlacement(
+  state,
+  type,
+  x,
+  y,
+  terrainMap,
+  options = {},
+) {
+  const checkResources = options.checkResources !== false
+  const bType = BUILDING_MAP[type]
+  if (!bType) return { ok: false, message: `Unknown building type: ${type}` }
+  if (bType.buildable === false) {
+    return { ok: false, message: `${bType.name} cannot be built manually` }
+  }
+  if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) {
+    return { ok: false, message: `Invalid coordinates (${x},${y})` }
+  }
+
+  const footprint = collectFootprintCells(x, y, bType.footprintSize)
+  if (bType.id === 'PIPELINE') {
+    const canAttach = isAdjacentToExistingStructure(state, x, y)
+    if (!canAttach) {
+      return {
+        ok: false,
+        message: 'Pipeline must connect to an existing structure',
+      }
+    }
+  } else if (!isWithinBuildRadius(state, footprint)) {
+    return {
+      ok: false,
+      message: `Must build within ${MAX_BUILD_RADIUS_FROM_COLONY} hexes of colony`,
+    }
+  }
+
+  if (bType.id !== 'PIPELINE' && !isAdjacentToPipeline(state, x, y)) {
+    return {
+      ok: false,
+      message: 'Buildings must be placed adjacent to a pipeline',
+    }
+  }
+
+  for (const cell of footprint) {
+    if (
+      cell.x < 0 ||
+      cell.x >= GRID_WIDTH ||
+      cell.y < 0 ||
+      cell.y >= GRID_HEIGHT
+    ) {
+      return { ok: false, message: `${bType.name} footprint does not fit on map` }
+    }
+    if (hasOccupiedCell(state, cell.x, cell.y)) {
+      return { ok: false, message: `Cell (${cell.x},${cell.y}) is already occupied` }
+    }
+  }
+
+  const tile = getTerrainAt(terrainMap, x, y, GRID_WIDTH)
+  const costMult = getPlacementCostMultiplier(tile)
+
+  if (checkResources) {
+    for (const [res, amt] of Object.entries(bType.cost)) {
+      const adjustedCost = res === 'minerals' ? Math.ceil(amt * costMult) : amt
+      if ((state.resources[res] || 0) < adjustedCost) {
+        return { ok: false, message: `Not enough resources to build ${bType.name}` }
+      }
+    }
+  }
+
+  return { ok: true, message: '', bType, footprint, tile, costMult }
 }
 
 export function upgradeBuildingAt(state, x, y) {

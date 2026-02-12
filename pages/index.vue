@@ -2,6 +2,7 @@
 import { getTerrainAt, getTerrainBonusText } from '~/utils/terrain'
 import { GRID_WIDTH, WASTE_OVERFLOW_PENALTY } from '~/utils/gameEngine'
 import { formatSignedFixed, roundTo } from '~/utils/formatting'
+import { ROLES } from '~/utils/colonistEngine'
 
 const colony = useColony()
 const camera = useCamera(colony.gridWidth, colony.gridHeight)
@@ -163,6 +164,43 @@ const hoverBuildingInfo = computed(() => {
   }
 })
 
+function colonistInitials(name) {
+  if (!name) return '??'
+  const parts = String(name).trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '??'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+const hoverColonistInfo = computed(() => {
+  const hover = interaction.hoverTile.value
+  const state = colony.state.value
+  if (!hover || !state) return []
+  if (!colony.revealedTiles.value.has(hover.gx + ',' + hover.gy)) return []
+
+  const units = (state.colonistUnits || []).filter(
+    (u) => u.x === hover.gx && u.y === hover.gy,
+  )
+  if (units.length === 0) return []
+
+  const byId = new Map((state.colonists || []).map((c) => [c.id, c]))
+  return units
+    .map((u) => byId.get(u.colonistId))
+    .filter(Boolean)
+    .map((c) => {
+      const role = ROLES[c.role]
+      return {
+        id: c.id,
+        name: c.name,
+        role: role?.name || c.role,
+        roleColor: role?.color || '#f59e0b',
+        initials: colonistInitials(c.name),
+        health: Math.round(c.health ?? 0),
+        morale: Math.round(c.morale ?? 0),
+      }
+    })
+})
+
 const contextMenuItems = computed(() => {
   const building = contextMenu.value.building
   if (!building) return []
@@ -305,6 +343,14 @@ function resetFromCollapseModal() {
   colony.resetColony()
 }
 
+const devModeModel = computed({
+  get: () => colony.devModeEnabled.value,
+  set: (enabled) => {
+    colony.setDevModeEnabled(enabled)
+    colony.resetColony()
+  },
+})
+
 onMounted(() => {
   colony.init()
 })
@@ -317,6 +363,8 @@ onMounted(() => {
       :tick-speed="colony.tickSpeed.value"
       :on-set-speed="colony.setSpeed"
       :on-manual-tick="colony.manualTick"
+      :dev-mode-allowed="colony.devModeAllowed"
+      v-model:dev-mode-enabled="devModeModel"
     />
     <div class="relative min-h-0 flex-1">
       <!-- Desktop left sidebar: resources + population + analytics -->
@@ -477,7 +525,9 @@ onMounted(() => {
         <!-- Terrain tooltip near cursor (desktop) -->
         <div
           v-if="
-            (hoverTerrainInfo || hoverBuildingInfo) &&
+            (hoverTerrainInfo ||
+              hoverBuildingInfo ||
+              hoverColonistInfo.length) &&
             !interaction.selectedBuilding.value
           "
           :style="hoverTooltipStyle"
@@ -530,6 +580,28 @@ onMounted(() => {
                 class="text-error"
               >
                 -{{ amount }} {{ res }}/t
+              </span>
+            </div>
+          </div>
+          <div
+            v-if="hoverColonistInfo.length"
+            class="border-default/60 mt-1 border-t pt-1 text-xs leading-tight"
+          >
+            <div class="text-highlighted mb-0.5 font-semibold">Colonists</div>
+            <div
+              v-for="colonist in hoverColonistInfo"
+              :key="`hover-colonist-${colonist.id}`"
+              class="mt-0.5 flex items-center gap-1.5"
+            >
+              <span
+                class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                :style="{ backgroundColor: colonist.roleColor }"
+              >
+                {{ colonist.initials }}
+              </span>
+              <span class="text-default">
+                {{ colonist.name }}
+                <span class="text-muted">({{ colonist.role }})</span>
               </span>
             </div>
           </div>

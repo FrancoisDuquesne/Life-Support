@@ -14,7 +14,12 @@ import {
   drawTerrainOverlay,
   drawEventOverlay,
 } from '~/utils/drawing'
-import { getFootprintCellsForType } from '~/utils/gameEngine'
+import {
+  getFootprintCellsForType,
+  BUILDING_TYPES,
+  validateBuildPlacement,
+} from '~/utils/gameEngine'
+import { ROLES } from '~/utils/colonistEngine'
 
 const props = defineProps({
   camera: Object,
@@ -283,6 +288,227 @@ function drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, type) {
   ctx.restore()
 }
 
+const PIPELINE_RESOURCE_COLORS = {
+  energy: '#fbbf24',
+  water: '#60a5fa',
+  oxygen: '#34d399',
+  minerals: '#f97316',
+}
+
+const PIPELINE_RESOURCE_ORDER = ['energy', 'water', 'oxygen', 'minerals']
+const BUILDING_TYPE_MAP = Object.fromEntries(BUILDING_TYPES.map((b) => [b.id, b]))
+
+function resourceBadgeColor(res) {
+  return PIPELINE_RESOURCE_COLORS[res] || '#e2e8f0'
+}
+
+function getColonistInitials(name) {
+  if (!name) return '??'
+  const parts = String(name).trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '??'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+function computePipelineNodeResources(placedBuildings) {
+  const byNode = new Map()
+  const pipelines = (placedBuildings || []).filter((b) => b.type === 'PIPELINE')
+
+  for (const pipe of pipelines) {
+    byNode.set(`${pipe.x},${pipe.y}`, new Set())
+  }
+
+  for (const b of placedBuildings || []) {
+    if (b.type === 'PIPELINE' || b.isUnderConstruction) continue
+    if ((b.hp ?? 100) <= 0) continue
+    const bType = BUILDING_TYPE_MAP[b.type]
+    const produced = Object.entries(bType?.produces || {})
+      .filter(([res, amount]) => amount > 0 && PIPELINE_RESOURCE_COLORS[res])
+      .map(([res]) => res)
+    if (produced.length === 0) continue
+
+    const cells = b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
+    for (const cell of cells) {
+      for (const [nx, ny] of hexNeighbors(cell.x, cell.y)) {
+        const key = `${nx},${ny}`
+        const set = byNode.get(key)
+        if (!set) continue
+        for (const res of produced) set.add(res)
+      }
+    }
+  }
+
+  const visited = new Set()
+  for (const pipe of pipelines) {
+    const startKey = `${pipe.x},${pipe.y}`
+    if (visited.has(startKey)) continue
+
+    const stack = [[pipe.x, pipe.y]]
+    const componentKeys = []
+    const componentResources = new Set()
+
+    while (stack.length > 0) {
+      const [x, y] = stack.pop()
+      const key = `${x},${y}`
+      if (visited.has(key)) continue
+      visited.add(key)
+      componentKeys.push(key)
+
+      const local = byNode.get(key)
+      if (local) {
+        for (const res of local) componentResources.add(res)
+      }
+
+      for (const [nx, ny] of hexNeighbors(x, y)) {
+        const nKey = `${nx},${ny}`
+        if (byNode.has(nKey) && !visited.has(nKey)) stack.push([nx, ny])
+      }
+    }
+
+    for (const key of componentKeys) {
+      byNode.set(key, new Set(componentResources))
+    }
+  }
+
+  return byNode
+}
+
+function drawPipelineOverlay(
+  ctx,
+  placedBuildings,
+  minCol,
+  maxCol,
+  minRow,
+  maxRow,
+  z,
+  ox,
+  oy,
+  hexS,
+) {
+  const pipelines = (placedBuildings || []).filter((b) => b.type === 'PIPELINE')
+  if (pipelines.length === 0) return
+
+  const pMap = new Map(pipelines.map((p) => [`${p.x},${p.y}`, p]))
+  const mdvCells = new Set()
+  for (const b of placedBuildings || []) {
+    if (b.type !== 'MDV_LANDING_SITE') continue
+    const cells = b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
+    for (const cell of cells) {
+      mdvCells.add(`${cell.x},${cell.y}`)
+    }
+  }
+  const nodeResources = computePipelineNodeResources(placedBuildings)
+
+  ctx.save()
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  const drawnEdges = new Set()
+
+  for (const pipe of pipelines) {
+    if (
+      pipe.x < minCol ||
+      pipe.x > maxCol ||
+      pipe.y < minRow ||
+      pipe.y > maxRow
+    )
+      continue
+    const cx = hexScreenX(pipe.x, z, ox)
+    const cy = hexScreenY(pipe.x, pipe.y, z, oy)
+
+    for (const [nx, ny] of hexNeighbors(pipe.x, pipe.y)) {
+      const nKey = `${nx},${ny}`
+      const isPipeNeighbor = pMap.has(nKey)
+      const isMdvNeighbor = mdvCells.has(nKey)
+      if (!isPipeNeighbor && !isMdvNeighbor) continue
+      const edgeKey = `${pipe.x},${pipe.y}|${nKey}`
+      const edgeReverse = `${nKey}|${pipe.x},${pipe.y}`
+      if (drawnEdges.has(edgeKey) || drawnEdges.has(edgeReverse)) continue
+      drawnEdges.add(edgeKey)
+
+      const ncx = hexScreenX(nx, z, ox)
+      const ncy = hexScreenY(nx, ny, z, oy)
+
+      ctx.strokeStyle = 'rgba(30, 41, 59, 0.85)'
+      ctx.lineWidth = Math.max(3.2, hexS * 0.22)
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(ncx, ncy)
+      ctx.stroke()
+
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.8)'
+      ctx.lineWidth = Math.max(2.2, hexS * 0.16)
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(ncx, ncy)
+      ctx.stroke()
+
+      const sourceSet = nodeResources.get(`${pipe.x},${pipe.y}`)
+      const targetSet = nodeResources.get(nKey)
+      const edgeResources = PIPELINE_RESOURCE_ORDER.filter((res) =>
+        isPipeNeighbor
+          ? sourceSet?.has(res) && targetSet?.has(res)
+          : sourceSet?.has(res),
+      )
+
+      if (edgeResources.length > 0) {
+        const dx = ncx - cx
+        const dy = ncy - cy
+        const len = Math.hypot(dx, dy) || 1
+        const px = -dy / len
+        const py = dx / len
+        const spread = Math.max(1.4, hexS * 0.09)
+
+        edgeResources.forEach((res, idx) => {
+          const centerOffset = idx - (edgeResources.length - 1) / 2
+          const off = centerOffset * spread
+          ctx.strokeStyle = resourceBadgeColor(res)
+          ctx.lineWidth = Math.max(1, hexS * 0.055)
+          ctx.beginPath()
+          ctx.moveTo(cx + px * off, cy + py * off)
+          ctx.lineTo(ncx + px * off, ncy + py * off)
+          ctx.stroke()
+        })
+      }
+    }
+  }
+
+  for (const pipe of pipelines) {
+    if (
+      pipe.x < minCol ||
+      pipe.x > maxCol ||
+      pipe.y < minRow ||
+      pipe.y > maxRow
+    )
+      continue
+    const cx = hexScreenX(pipe.x, z, ox)
+    const cy = hexScreenY(pipe.x, pipe.y, z, oy)
+    const resources = PIPELINE_RESOURCE_ORDER.filter((res) =>
+      nodeResources.get(`${pipe.x},${pipe.y}`)?.has(res),
+    )
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)'
+    ctx.beginPath()
+    ctx.arc(cx, cy, Math.max(3, hexS * 0.23), 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(226, 232, 240, 0.9)'
+    ctx.lineWidth = Math.max(0.9, hexS * 0.05)
+    ctx.stroke()
+
+    resources.slice(0, 3).forEach((res, idx) => {
+      ctx.fillStyle = resourceBadgeColor(res)
+      const rx = cx - hexS * 0.18 + idx * hexS * 0.18
+      const ry = cy + hexS * 0.02
+      ctx.beginPath()
+      ctx.arc(rx, ry, Math.max(2.2, hexS * 0.08), 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.95)'
+      ctx.lineWidth = Math.max(0.7, hexS * 0.035)
+      ctx.stroke()
+    })
+  }
+  ctx.restore()
+}
+
 function drawUndiscoveredBackdrop(ctx, w, h, now) {
   const base = ctx.createLinearGradient(0, 0, 0, h)
   base.addColorStop(0, '#050506')
@@ -491,12 +717,20 @@ function render() {
       for (let col = minCol; col <= maxCol; col++) {
         const key = col + ',' + row
         if (revealed && !revealed.has(key)) continue
-        if (!buildable.has(key)) continue
         const cx = hexScreenX(col, z, ox)
         const cy = hexScreenY(col, row, z, oy)
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.08)'
+        const isBuildableCell = buildable.has(key)
+        ctx.fillStyle = isBuildableCell
+          ? 'rgba(56, 189, 248, 0.2)'
+          : 'rgba(15, 23, 42, 0.08)'
         hexPath(ctx, cx, cy, hexS)
         ctx.fill()
+        if (isBuildableCell) {
+          ctx.strokeStyle = 'rgba(125, 211, 252, 0.42)'
+          ctx.lineWidth = Math.max(0.8, hexS * 0.03)
+          hexPath(ctx, cx, cy, hexS * 0.96)
+          ctx.stroke()
+        }
       }
     }
   }
@@ -625,7 +859,26 @@ function render() {
     })
   }
 
-  // Layer 3a: Colonist markers
+  // Layer 3a: Pipeline overlay
+  if (props.state && props.state.placedBuildings) {
+    drawPipelineOverlay(
+      ctx,
+      props.state.placedBuildings,
+      minCol,
+      maxCol,
+      minRow,
+      maxRow,
+      z,
+      ox,
+      oy,
+      hexS,
+    )
+  }
+
+  // Layer 3b: Colonist markers
+  const colonistById = new Map(
+    (props.state?.colonists || []).map((c) => [c.id, c]),
+  )
   if (props.state && props.state.colonistUnits) {
     for (const unit of props.state.colonistUnits) {
       if (
@@ -638,19 +891,40 @@ function render() {
       if (revealed && !revealed.has(unit.x + ',' + unit.y)) continue
       const cx = hexScreenX(unit.x, z, ox)
       const cy = hexScreenY(unit.x, unit.y, z, oy)
+      const colonist = colonistById.get(unit.colonistId)
+      const roleColor = ROLES[colonist?.role]?.color || '#f59e0b'
+      const initials = getColonistInitials(colonist?.name)
       ctx.save()
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.95)'
-      ctx.strokeStyle = 'rgba(17, 24, 39, 0.85)'
-      ctx.lineWidth = Math.max(1, z * 1.2)
+      const badgeR = Math.max(6, hexS * 0.23)
+      ctx.fillStyle = roleColor
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.95)'
+      ctx.lineWidth = Math.max(1.3, z * 1.25)
       ctx.beginPath()
-      ctx.arc(cx, cy - hexS * 0.28, Math.max(2, hexS * 0.14), 0, Math.PI * 2)
+      ctx.arc(cx, cy - hexS * 0.28, badgeR, 0, Math.PI * 2)
       ctx.fill()
       ctx.stroke()
+
+      ctx.fillStyle = 'white'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.font = `700 ${Math.max(7, hexS * 0.18)}px sans-serif`
+      ctx.fillText(initials, cx, cy - hexS * 0.28)
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.2)'
+      ctx.beginPath()
+      ctx.arc(
+        cx - badgeR * 0.22,
+        cy - hexS * 0.28 - badgeR * 0.24,
+        badgeR * 0.24,
+        0,
+        Math.PI * 2,
+      )
+      ctx.fill()
       ctx.restore()
     }
   }
 
-  // Layer 3b: Placement pulse animations
+  // Layer 3c: Placement pulse animations
   for (const anim of placementAnims) {
     if (
       anim.x >= minCol &&
@@ -700,28 +974,30 @@ function render() {
   ) {
     if (!revealed || revealed.has(hover.gx + ',' + hover.gy)) {
       const footprint = getFootprintCellsForType(sel, hover.gx, hover.gy)
-      const invalidCell = footprint.find(
-        (cell) =>
-          cell.x < 0 ||
-          cell.x >= gw ||
-          cell.y < 0 ||
-          cell.y >= gh ||
-          occupied.has(cell.x + ',' + cell.y),
+      const validation = validateBuildPlacement(
+        props.state,
+        sel,
+        hover.gx,
+        hover.gy,
+        props.terrainMap,
       )
-      const inBuildRange =
-        !props.buildableCells ||
-        props.buildableCells.has(hover.gx + ',' + hover.gy)
-      const isOccupied = !!invalidCell || !inBuildRange
+      const canBuildHere = !!validation.ok
 
       for (const cell of footprint) {
         if (cell.x < 0 || cell.x >= gw || cell.y < 0 || cell.y >= gh) continue
         const cx = hexScreenX(cell.x, z, ox)
         const cy = hexScreenY(cell.x, cell.y, z, oy)
-        ctx.fillStyle = isOccupied
-          ? 'rgba(239, 68, 68, 0.3)'
-          : 'rgba(34, 197, 94, 0.15)'
+        ctx.fillStyle = canBuildHere
+          ? 'rgba(34, 197, 94, 0.22)'
+          : 'rgba(239, 68, 68, 0.34)'
         hexPath(ctx, cx, cy, hexS)
         ctx.fill()
+        ctx.strokeStyle = canBuildHere
+          ? 'rgba(74, 222, 128, 0.7)'
+          : 'rgba(248, 113, 113, 0.72)'
+        ctx.lineWidth = Math.max(1, hexS * 0.05)
+        hexPath(ctx, cx, cy, hexS * 0.94)
+        ctx.stroke()
       }
 
       const visibleFootprint = footprint.filter(
@@ -748,7 +1024,7 @@ function render() {
           ox,
           oy,
           hexS,
-          isOccupied ? 0.3 : 0.6,
+          canBuildHere ? 0.6 : 0.3,
         )
       if (!drewTileCenteredFootprint) {
         const rotation = getBuildingRotation(
@@ -765,7 +1041,7 @@ function render() {
           metrics.cx - metrics.iconSize / 2,
           metrics.cy - metrics.iconSize / 2,
           metrics.iconSize,
-          isOccupied ? 0.3 : 0.6,
+          canBuildHere ? 0.6 : 0.3,
           rotation,
         )
       }

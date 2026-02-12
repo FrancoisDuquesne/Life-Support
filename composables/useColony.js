@@ -21,6 +21,9 @@ import {
 import { clearDrawingCaches } from '~/utils/drawing'
 
 export function useColony() {
+  const DEV_MODE_ALLOWED = import.meta.dev
+  const DEV_PRESET_ID = 'developer-balanced'
+  const DEV_PRESET_STORAGE_KEY = 'life-support-dev-preset-enabled'
   const EMPTY_DELTAS = {
     energy: 0,
     food: 0,
@@ -45,6 +48,27 @@ export function useColony() {
 
   // Terrain map (generated from seed, shared with GameMap)
   const terrainMap = ref(null)
+  const devModeEnabled = ref(DEV_MODE_ALLOWED)
+
+  function readDevModePreference() {
+    if (!DEV_MODE_ALLOWED) return false
+    try {
+      const raw = localStorage.getItem(DEV_PRESET_STORAGE_KEY)
+      if (raw === null) return true
+      return raw === '1'
+    } catch (_) {
+      return true
+    }
+  }
+
+  function persistDevModePreference(enabled) {
+    if (!DEV_MODE_ALLOWED) return
+    try {
+      localStorage.setItem(DEV_PRESET_STORAGE_KEY, enabled ? '1' : '0')
+    } catch (_) {
+      // ignore storage write failures
+    }
+  }
 
   function cubeLerp(a, b, t) {
     return {
@@ -190,9 +214,10 @@ export function useColony() {
 
   function init() {
     buildingsInfo.value = engineBuildingsInfo()
+    devModeEnabled.value = readDevModePreference()
 
     // Try loading saved game
-    const saved = loadGame()
+    const saved = devModeEnabled.value ? null : loadGame()
     if (saved) {
       colony = saved.state
       revealedTiles.value = saved.revealedTiles
@@ -209,10 +234,19 @@ export function useColony() {
     } else {
       const terrainSeed = Math.floor(Math.random() * 2147483647)
       const terrainOk = generateTerrain(terrainSeed)
-      colony = createColonyState({ terrainSeed, terrainMap: terrainMap.value })
+      colony = createColonyState({
+        terrainSeed,
+        terrainMap: terrainMap.value,
+        preset: devModeEnabled.value ? DEV_PRESET_ID : undefined,
+      })
       state.value = toSnapshot(colony)
       pushHistory(state.value)
-      addLog(0, 'Colony connection established.')
+      addLog(
+        0,
+        devModeEnabled.value
+          ? 'Developer preset loaded: balanced starter colony.'
+          : 'Colony connection established.',
+      )
       if (!terrainOk) {
         addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
       }
@@ -294,12 +328,21 @@ export function useColony() {
     clearDrawingCaches()
     const terrainSeed = Math.floor(Math.random() * 2147483647)
     const terrainOk = generateTerrain(terrainSeed)
-    colony = createColonyState({ terrainSeed, terrainMap: terrainMap.value })
+    colony = createColonyState({
+      terrainSeed,
+      terrainMap: terrainMap.value,
+      preset: devModeEnabled.value ? DEV_PRESET_ID : undefined,
+    })
     state.value = toSnapshot(colony)
     eventLog.value = []
     resourceHistory.value = []
     pushHistory(state.value)
-    addLog(0, 'Colony has been reset.')
+    addLog(
+      0,
+      devModeEnabled.value
+        ? 'Developer preset loaded: balanced starter colony.'
+        : 'Colony has been reset.',
+    )
     if (!terrainOk) {
       addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
     }
@@ -375,6 +418,12 @@ export function useColony() {
     startTickTimer()
   }
 
+  function setDevModeEnabled(enabled) {
+    if (!DEV_MODE_ALLOWED) return
+    devModeEnabled.value = !!enabled
+    persistDevModePreference(devModeEnabled.value)
+  }
+
   return {
     state,
     buildingsInfo,
@@ -388,6 +437,8 @@ export function useColony() {
     buildableCells,
     activeEvents,
     tickSpeed,
+    devModeAllowed: DEV_MODE_ALLOWED,
+    devModeEnabled,
     init,
     buildAt,
     upgradeBuildingAt,
@@ -397,5 +448,6 @@ export function useColony() {
     revealAround,
     manualTick,
     setSpeed,
+    setDevModeEnabled,
   }
 }
