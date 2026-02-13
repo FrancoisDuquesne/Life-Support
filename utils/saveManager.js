@@ -22,6 +22,9 @@ function normalizePlacedBuilding(pb) {
     disabledUntilTick: pb.disabledUntilTick || 0,
     hp: pb.hp !== undefined ? pb.hp : 100,
     maxHp: pb.maxHp || 100,
+    level: pb.level || 1,
+    isUnderConstruction: !!pb.isUnderConstruction,
+    constructionDoneTick: pb.constructionDoneTick || 0,
   }
 }
 
@@ -47,13 +50,20 @@ export function saveGame(state, revealedTiles) {
       nextEventId: state.nextEventId || 1,
       waste: state.waste || 0,
       wasteCapacity: state.wasteCapacity || 50,
+      lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
+      colonistUnits: (state.colonistUnits || []).map((u) => ({
+        colonistId: u.colonistId,
+        x: u.x,
+        y: u.y,
+      })),
     },
     revealedTiles: Array.from(revealedTiles),
   }
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(data))
+    return true
   } catch (_) {
-    // quota exceeded or unavailable — silently ignore
+    return false
   }
 }
 
@@ -194,6 +204,12 @@ export function loadGame() {
       nextEventId: s.nextEventId || 1,
       waste: s.waste || 0,
       wasteCapacity: s.wasteCapacity || 50,
+      lastColonistArrivalTick: s.lastColonistArrivalTick || 0,
+      colonistUnits: (s.colonistUnits || []).map((u) => ({
+        colonistId: u.colonistId,
+        x: u.x,
+        y: u.y,
+      })),
     }
 
     const revealedTiles = new Set(data.revealedTiles)

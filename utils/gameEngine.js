@@ -22,7 +22,7 @@ import {
   checkPopulationGrowth,
   createInitialColonists,
 } from '~/utils/colonistEngine'
-import { hexDistance, hexNeighbors } from '~/utils/hex'
+import { hexDistance, hexNeighbors, hexesInRadius } from '~/utils/hex'
 
 export const GRID_WIDTH = 64
 export const GRID_HEIGHT = 64
@@ -249,6 +249,7 @@ function consumptionMultiplierFromLevel(pb) {
 function isWithinBuildRadius(state, footprint) {
   const colonyCells = []
   for (const pb of state.placedBuildings || []) {
+    if (pb.type !== 'PIPELINE' && pb.type !== 'MDV_LANDING_SITE') continue
     colonyCells.push(...getBuildingCells(pb))
   }
   if (colonyCells.length === 0) return true
@@ -372,15 +373,15 @@ export function getBuildableCells(state) {
   for (const pb of state?.placedBuildings || []) {
     if (pb.type !== 'PIPELINE' && pb.type !== 'MDV_LANDING_SITE') continue
     for (const origin of getBuildingCells(pb)) {
-      for (let y = 0; y < GRID_HEIGHT; y++) {
-        for (let x = 0; x < GRID_WIDTH; x++) {
-          if (
-            hexDistance(origin.x, origin.y, x, y) <=
-            MAX_BUILD_RADIUS_FROM_COLONY
-          ) {
-            cells.add(cellKey(x, y))
-          }
-        }
+      const nearby = hexesInRadius(
+        origin.x,
+        origin.y,
+        MAX_BUILD_RADIUS_FROM_COLONY,
+        GRID_WIDTH,
+        GRID_HEIGHT,
+      )
+      for (const [x, y] of nearby) {
+        cells.add(cellKey(x, y))
       }
     }
   }
@@ -659,8 +660,8 @@ export function computeResourceDeltas(state, terrainMap) {
 
   // Population drain
   const pop = getPopulation(state)
-  deltas.food -= Math.floor(pop / 2)
-  deltas.water -= Math.floor(pop / 3)
+  deltas.food -= pop > 0 ? Math.max(1, Math.floor(pop / 2)) : 0
+  deltas.water -= pop > 0 ? Math.max(1, Math.floor(pop / 3)) : 0
   deltas.oxygen -= pop
 
   // Waste delta
@@ -774,7 +775,8 @@ export function processTick(state, terrainMap, revealedTiles) {
   }
   if (deadBuildings.length > 0) {
     state.placedBuildings = state.placedBuildings.filter(
-      (pb) => pb.hp === undefined || pb.hp > 0,
+      (pb) =>
+        pb.type === 'MDV_LANDING_SITE' || pb.hp === undefined || pb.hp > 0,
     )
     if (state.colonists && state.colonists.length > 0) {
       applyBuildingLostPenalty(state)
@@ -805,72 +807,13 @@ export function processTick(state, terrainMap, revealedTiles) {
 
   clampResourcesNonNegative(state.resources)
 
-  // 7. Compute role bonuses + colony efficiency for production
-  const roleBonuses = computeRoleBonuses(state)
-  const colonyEff = computeColonyEfficiency(state.colonists)
-
-  // 8. Building production & consumption
+  // 7-10. Production, consumption, population drain, waste (shared with UI deltas)
   const modifiers = getActiveModifiers(state)
-  const pipelineNetworks = computePipelineNetworks(state)
-  const wasteOverflow = state.waste > state.wasteCapacity
-  const wastePenalty = wasteOverflow ? WASTE_OVERFLOW_PENALTY : 1.0
-
-  for (const pb of state.placedBuildings) {
-    const bType = BUILDING_MAP[pb.type]
-    if (!bType) continue
-    if (!isBuildingActive(pb, state.tickCount)) continue
-    if (isUnderConstruction(pb)) continue
-    if (!canBuildingAccessPipelineResources(state, pb, bType, pipelineNetworks))
-      continue
-
-    const hpEfficiency = pb.hp !== undefined ? pb.hp / (pb.maxHp || 100) : 1
-    const levelProdMult = productionMultiplierFromLevel(pb)
-    const levelConsMult = consumptionMultiplierFromLevel(pb)
-    const tile = getTerrainAt(terrainMap, pb.x, pb.y, GRID_WIDTH)
-    const terrainMult = getProductionMultiplier(bType, tile)
-
-    for (const [res, amt] of Object.entries(bType.produces)) {
-      let effectiveMult = terrainMult * hpEfficiency * wastePenalty * colonyEff
-      if (roleBonuses.buildingMultipliers[pb.type]) {
-        effectiveMult *= roleBonuses.buildingMultipliers[pb.type]
-      }
-      effectiveMult *= roleBonuses.globalMultiplier
-      if (res === 'energy' && bType.id === 'SOLAR_PANEL') {
-        effectiveMult *= modifiers.solarMultiplier
-      }
-      if (res === 'energy') {
-        effectiveMult *= modifiers.energyMultiplier
-      }
-      state.resources[res] =
-        (state.resources[res] || 0) + amt * effectiveMult * levelProdMult
-    }
-    for (const [res, amt] of Object.entries(bType.consumes)) {
-      state.resources[res] =
-        (state.resources[res] || 0) - amt * hpEfficiency * levelConsMult
-    }
+  const deltas = computeResourceDeltas(state, terrainMap)
+  for (const key of RESOURCE_KEYS) {
+    state.resources[key] = (state.resources[key] || 0) + (deltas[key] || 0)
   }
-
-  // 9. Population food/water/oxygen drain
-  const pop = getPopulation(state)
-  const foodConsumed = Math.floor(pop / 2)
-  const waterConsumed = Math.floor(pop / 3)
-  const oxygenConsumed = pop
-  state.resources.food -= foodConsumed
-  state.resources.water -= waterConsumed
-  state.resources.oxygen -= oxygenConsumed
-
-  // 10. Waste accumulation
-  const activeBuildingCount = state.placedBuildings.filter((pb) =>
-    isBuildingActive(pb, state.tickCount),
-  ).length
-  const activeRecyclerCount = state.placedBuildings.filter(
-    (pb) =>
-      pb.type === 'RECYCLING_CENTER' && isBuildingActive(pb, state.tickCount),
-  ).length
-  const wasteGenerated =
-    activeBuildingCount * WASTE_PER_BUILDING + pop * WASTE_PER_COLONIST
-  const wasteReduced = activeRecyclerCount * WASTE_REDUCTION_PER_RECYCLER
-  state.waste = Math.max(0, state.waste + wasteGenerated - wasteReduced)
+  state.waste = Math.max(0, state.waste + (deltas.waste || 0))
 
   // 11. Death checks
   events += `Tick ${state.tickCount} processed. `

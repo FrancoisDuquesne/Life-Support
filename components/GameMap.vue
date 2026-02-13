@@ -41,6 +41,8 @@ let dirty = true
 let lastPlacedCount = 0
 
 const placementAnims = []
+let _pipelineCacheKey = ''
+let _pipelineCacheData = null
 const HEX_VERTEX_ANGLES = Array.from(
   { length: 6 },
   (_, i) => (Math.PI / 180) * (60 * i),
@@ -397,7 +399,18 @@ function drawPipelineOverlay(
       mdvCells.add(`${cell.x},${cell.y}`)
     }
   }
-  const nodeResources = computePipelineNodeResources(placedBuildings)
+  const readyCount = (placedBuildings || []).filter(
+    (b) => !b.isUnderConstruction,
+  ).length
+  const cacheKey = `${(placedBuildings || []).length}:${readyCount}`
+  let nodeResources
+  if (cacheKey === _pipelineCacheKey && _pipelineCacheData) {
+    nodeResources = _pipelineCacheData
+  } else {
+    nodeResources = computePipelineNodeResources(placedBuildings)
+    _pipelineCacheKey = cacheKey
+    _pipelineCacheData = nodeResources
+  }
 
   ctx.save()
   ctx.lineCap = 'round'
@@ -557,27 +570,34 @@ function markDirty() {
 }
 
 watch(
-  () => props.state,
-  () => {
-    if (props.state && props.state.placedBuildings) {
-      const newCount = props.state.placedBuildings.length
-      if (newCount > lastPlacedCount) {
-        for (let i = lastPlacedCount; i < newCount; i++) {
+  () => props.state?.placedBuildings?.length,
+  (newCount, oldCount) => {
+    if (
+      props.state &&
+      props.state.placedBuildings &&
+      newCount != null &&
+      oldCount != null
+    ) {
+      if (newCount > oldCount) {
+        for (let i = oldCount; i < newCount; i++) {
           const b = props.state.placedBuildings[i]
-          placementAnims.push({
-            x: b.x,
-            y: b.y,
-            start: performance.now(),
-            duration: 600,
-          })
+          if (b) {
+            placementAnims.push({
+              x: b.x,
+              y: b.y,
+              start: performance.now(),
+              duration: 600,
+            })
+          }
         }
-        lastPlacedCount = newCount
       }
+      lastPlacedCount = newCount
     }
     markDirty()
   },
-  { deep: true },
 )
+watch(() => props.state?.tickCount, markDirty)
+watch(() => props.state?.alive, markDirty)
 
 watch(() => props.interaction.hoverTile.value, markDirty)
 watch(() => props.interaction.selectedBuilding.value, markDirty)
@@ -746,16 +766,6 @@ function render() {
       hexPath(ctx, cx, cy, hexS)
       ctx.stroke()
     }
-  }
-
-  // Build occupied set
-  const occupied = new Set()
-  if (props.state && props.state.placedBuildings) {
-    props.state.placedBuildings.forEach((b) => {
-      const cells =
-        b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
-      cells.forEach((cell) => occupied.add(cell.x + ',' + cell.y))
-    })
   }
 
   // Layer 2b: Terrain overlays (deposits/hazards)
@@ -1125,6 +1135,9 @@ onUnmounted(() => {
   <canvas
     ref="canvasRef"
     class="game-canvas"
+    role="application"
+    aria-label="Colony hex map — click to place buildings, drag to pan, scroll to zoom"
+    tabindex="0"
     :style="{ cursor: canvasCursor }"
     @mousedown.prevent="interaction.onPointerDown(canvasRef, $event)"
     @mousemove.prevent="interaction.onPointerMove(canvasRef, $event)"

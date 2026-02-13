@@ -270,6 +270,16 @@ export function useColony() {
     }
   }
 
+  function trySave() {
+    const ok = saveGame(colony, revealedTiles.value)
+    if (!ok) {
+      addLog(
+        colony?.tickCount ?? null,
+        'WARNING: Failed to save — storage may be full.',
+      )
+    }
+  }
+
   function doTick() {
     if (!colony) return
     const result = engineTick(colony, terrainMap.value, revealedTiles.value)
@@ -286,7 +296,7 @@ export function useColony() {
       revealedTiles.value = newSet
     }
 
-    saveGame(colony, revealedTiles.value)
+    trySave()
   }
 
   function buildAt(type, x, y) {
@@ -295,7 +305,7 @@ export function useColony() {
     state.value = result.colonyState
     addLog(state.value ? state.value.tickCount : null, result.message)
     if (result.success) {
-      saveGame(colony, revealedTiles.value)
+      trySave()
     }
     return result
   }
@@ -306,7 +316,7 @@ export function useColony() {
     state.value = result.colonyState
     addLog(state.value ? state.value.tickCount : null, result.message)
     if (result.success) {
-      saveGame(colony, revealedTiles.value)
+      trySave()
     }
     return result
   }
@@ -317,7 +327,7 @@ export function useColony() {
     state.value = result.colonyState
     addLog(state.value ? state.value.tickCount : null, result.message)
     if (result.success) {
-      saveGame(colony, revealedTiles.value)
+      trySave()
     }
     return result
   }
@@ -423,6 +433,8 @@ export function useColony() {
     devModeEnabled.value = !!enabled
     persistDevModePreference(devModeEnabled.value)
   }
+
+  onUnmounted(stopTickTimer)
 
   return {
     state,

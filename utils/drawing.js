@@ -98,37 +98,43 @@ export function clearDrawingCaches() {
   tileRocksCache = null
 }
 
+function tileHash(idx, salt) {
+  let h = (idx * 374761393 + salt * 668265263 + 42) | 0
+  h = (h ^ (h >> 13)) * 1274126177
+  return ((h ^ (h >> 16)) & 0x7fffffff) / 0x7fffffff
+}
+
 export function getTileRocks(gw, gh) {
   if (tileRocksCache && tileRocksCache.w === gw && tileRocksCache.h === gh)
     return tileRocksCache.data
   const data = []
   for (let i = 0; i < gw * gh; i++) {
-    const r = Math.random()
+    const r = tileHash(i, 0)
     if (r < 0.08) {
       data.push({
         type: 'rock_large',
-        ox: Math.random() * 0.4 + 0.1,
-        oy: Math.random() * 0.4 + 0.1,
-        size: 0.2 + Math.random() * 0.15,
+        ox: tileHash(i, 1) * 0.4 + 0.1,
+        oy: tileHash(i, 2) * 0.4 + 0.1,
+        size: 0.2 + tileHash(i, 3) * 0.15,
         color: '#9e8a6a',
       })
     } else if (r < 0.22) {
       const pebbles = []
-      const count = 1 + Math.floor(Math.random() * 3)
+      const count = 1 + Math.floor(tileHash(i, 4) * 3)
       for (let p = 0; p < count; p++) {
         pebbles.push({
-          ox: Math.random() * 0.7 + 0.1,
-          oy: Math.random() * 0.7 + 0.1,
-          size: 0.04 + Math.random() * 0.06,
+          ox: tileHash(i, 5 + p * 3) * 0.7 + 0.1,
+          oy: tileHash(i, 6 + p * 3) * 0.7 + 0.1,
+          size: 0.04 + tileHash(i, 7 + p * 3) * 0.06,
         })
       }
       data.push({ type: 'pebbles', pebbles, color: '#a08e70' })
     } else if (r < 0.28) {
       data.push({
         type: 'crater',
-        ox: 0.25 + Math.random() * 0.3,
-        oy: 0.25 + Math.random() * 0.3,
-        size: 0.15 + Math.random() * 0.15,
+        ox: 0.25 + tileHash(i, 14) * 0.3,
+        oy: 0.25 + tileHash(i, 15) * 0.3,
+        size: 0.15 + tileHash(i, 16) * 0.15,
       })
     } else {
       data.push(null)
