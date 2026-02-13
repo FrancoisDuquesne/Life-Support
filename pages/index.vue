@@ -40,6 +40,59 @@ const showResourceGraph = ref(false)
 const showCollapseModal = ref(false)
 const colonistsPanelRef = ref(null)
 
+// Tutorial state
+const TUTORIAL_DONE_KEY = 'life-support-tutorial-done'
+const tutorialStep = ref(-1)
+
+const TUTORIAL_BUILDING_SEQUENCE = [
+  null,           // step 0: welcome
+  'PIPELINE',     // step 1
+  'SOLAR_PANEL',  // step 2
+  'HYDROPONIC_FARM', // step 3
+  'OXYGEN_GENERATOR', // step 4
+  null,           // step 5: complete
+]
+
+function dismissTutorial() {
+  tutorialStep.value = -1
+  try { localStorage.setItem(TUTORIAL_DONE_KEY, '1') } catch (_) {}
+}
+
+function onTutorialNext() {
+  if (tutorialStep.value === 0) {
+    tutorialStep.value = 1
+    interaction.selectBuilding('PIPELINE')
+  } else if (tutorialStep.value === 5) {
+    dismissTutorial()
+  }
+}
+
+// Auto-advance tutorial when buildings are placed
+watch(
+  () => colony.state.value?.buildings,
+  (buildings) => {
+    if (!buildings || tutorialStep.value < 1 || tutorialStep.value > 4) return
+    const checks = [
+      { step: 1, key: 'pipeline', nextBuilding: 'SOLAR_PANEL' },
+      { step: 2, key: 'solar_panel', nextBuilding: 'HYDROPONIC_FARM' },
+      { step: 3, key: 'hydroponic_farm', nextBuilding: 'OXYGEN_GENERATOR' },
+      { step: 4, key: 'oxygen_generator', nextBuilding: null },
+    ]
+    for (const check of checks) {
+      if (tutorialStep.value === check.step && (buildings[check.key] || 0) > 0) {
+        tutorialStep.value = check.step + 1
+        if (check.nextBuilding) {
+          interaction.selectBuilding(check.nextBuilding)
+        } else {
+          interaction.clearSelection()
+        }
+        break
+      }
+    }
+  },
+  { deep: true },
+)
+
 const eventToast = ref(null)
 let toastTimer = null
 
@@ -353,6 +406,14 @@ const devModeModel = computed({
 
 onMounted(() => {
   colony.init()
+  // Start tutorial for new games that haven't completed it
+  if (colony.isNewGame.value) {
+    try {
+      if (!localStorage.getItem(TUTORIAL_DONE_KEY)) {
+        tutorialStep.value = 0
+      }
+    } catch (_) {}
+  }
 })
 </script>
 <template>
@@ -721,6 +782,14 @@ onMounted(() => {
         </div>
       </template>
     </UModal>
+
+    <!-- Tutorial Overlay -->
+    <TutorialOverlay
+      v-if="tutorialStep >= 0"
+      :step="tutorialStep"
+      @skip="dismissTutorial"
+      @next="onTutorialNext"
+    />
 
     <!-- Building Context Menu -->
     <Teleport to="body">

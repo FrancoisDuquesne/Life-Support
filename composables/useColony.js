@@ -37,6 +37,7 @@ export function useColony() {
   const buildingsInfo = ref([])
   const eventLog = ref([])
   const resourceHistory = ref([])
+  const isNewGame = ref(false)
   const MAX_HISTORY = 60
 
   // Internal mutable colony (not the reactive snapshot)
@@ -219,6 +220,7 @@ export function useColony() {
     // Try loading saved game
     const saved = devModeEnabled.value ? null : loadGame()
     if (saved) {
+      isNewGame.value = false
       colony = saved.state
       revealedTiles.value = saved.revealedTiles
       const terrainOk = generateTerrain(colony.terrainSeed)
@@ -232,6 +234,7 @@ export function useColony() {
         )
       }
     } else {
+      isNewGame.value = true
       const terrainSeed = Math.floor(Math.random() * 2147483647)
       const terrainOk = generateTerrain(terrainSeed)
       colony = createColonyState({
@@ -333,6 +336,7 @@ export function useColony() {
   }
 
   function resetColony() {
+    isNewGame.value = true
     clearSave()
     clearTerrainCache()
     clearDrawingCaches()
@@ -440,6 +444,7 @@ export function useColony() {
     state,
     buildingsInfo,
     eventLog,
+    isNewGame,
     gridWidth,
     gridHeight,
     resourceDeltas,
