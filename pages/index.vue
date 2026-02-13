@@ -2,6 +2,7 @@
 import { getTerrainAt, getTerrainBonusText } from '~/utils/terrain'
 import { GRID_WIDTH, WASTE_OVERFLOW_PENALTY } from '~/utils/gameEngine'
 import { formatSignedFixed, roundTo } from '~/utils/formatting'
+import { ROLES } from '~/utils/colonistEngine'
 
 const colony = useColony()
 const camera = useCamera(colony.gridWidth, colony.gridHeight)
@@ -42,13 +43,28 @@ const colonistsPanelRef = ref(null)
 const eventToast = ref(null)
 let toastTimer = null
 
-const collapseMessage = computed(() => {
+const contextMenu = ref({
+  open: false,
+  x: 0,
+  y: 0,
+  building: null,
+})
+
+const collapseSummary = computed(() => {
+  const reason = colony.state.value && colony.state.value.collapseReason
+  if (reason && reason.cause) return reason.cause
   const log = colony.eventLog.value || []
   for (let i = log.length - 1; i >= 0; i--) {
     const msg = log[i] && log[i].msg ? log[i].msg : ''
     if (/COLLAPSED/i.test(msg)) return msg
   }
   return 'Life support has failed. The colony is no longer operational.'
+})
+
+const collapseHint = computed(() => {
+  const reason = colony.state.value && colony.state.value.collapseReason
+  if (reason && reason.hint) return reason.hint
+  return 'Tip: Keep all critical resources above zero and respond to warnings immediately.'
 })
 
 watch(
@@ -115,7 +131,11 @@ const hoverBuildingInfo = computed(() => {
 
   const placed =
     (colony.state.value && colony.state.value.placedBuildings) || []
-  const building = placed.find((b) => b.x === hover.gx && b.y === hover.gy)
+  const building = placed.find((b) =>
+    b.cells && b.cells.length > 0
+      ? b.cells.some((cell) => cell.x === hover.gx && cell.y === hover.gy)
+      : b.x === hover.gx && b.y === hover.gy,
+  )
   if (!building) return null
 
   const info = colony.buildingsInfo.value.find((b) => b.id === building.type)
@@ -142,6 +162,82 @@ const hoverBuildingInfo = computed(() => {
     consumes,
     nameClass: buildingClassMap[building.type] || 'text-primary',
   }
+})
+
+function colonistInitials(name) {
+  if (!name) return '??'
+  const parts = String(name).trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '??'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+const hoverColonistInfo = computed(() => {
+  const hover = interaction.hoverTile.value
+  const state = colony.state.value
+  if (!hover || !state) return []
+  if (!colony.revealedTiles.value.has(hover.gx + ',' + hover.gy)) return []
+
+  const units = (state.colonistUnits || []).filter(
+    (u) => u.x === hover.gx && u.y === hover.gy,
+  )
+  if (units.length === 0) return []
+
+  const byId = new Map((state.colonists || []).map((c) => [c.id, c]))
+  return units
+    .map((u) => byId.get(u.colonistId))
+    .filter(Boolean)
+    .map((c) => {
+      const role = ROLES[c.role]
+      return {
+        id: c.id,
+        name: c.name,
+        role: role?.name || c.role,
+        roleColor: role?.color || '#f59e0b',
+        initials: colonistInitials(c.name),
+        health: Math.round(c.health ?? 0),
+        morale: Math.round(c.morale ?? 0),
+      }
+    })
+})
+
+const contextMenuItems = computed(() => {
+  const building = contextMenu.value.building
+  if (!building) return []
+
+  const bInfo = colony.buildingsInfo.value.find((b) => b.id === building.type)
+  const isMDV = building.type === 'MDV_LANDING_SITE'
+
+  return [
+    {
+      label: `Upgrade ${bInfo?.name || building.type}`,
+      icon: 'i-heroicons-arrow-trending-up',
+      color: 'primary',
+      disabled: isMDV,
+      onSelect: () => {
+        if (!isMDV) {
+          colony.upgradeBuildingAt(building.x, building.y)
+        }
+        contextMenu.value.open = false
+      },
+    },
+    {
+      label: `Demolish ${bInfo?.name || building.type}`,
+      icon: 'i-heroicons-trash',
+      color: 'error',
+      disabled: isMDV,
+      onSelect: () => {
+        if (!isMDV) {
+          colony.demolishAt(building.x, building.y)
+          interaction.clearSelection()
+        }
+        contextMenu.value.open = false
+      },
+    },
+    // Future actions:
+    // { label: 'Upgrade', icon: 'i-heroicons-arrow-up', disabled: true },
+    // { label: 'Repair', icon: 'i-heroicons-wrench', disabled: true },
+  ]
 })
 
 const mapAreaRef = ref(null)
@@ -191,6 +287,38 @@ async function onTileClick(gx, gy) {
   }
 }
 
+async function onTileDelete(gx, gy) {
+  if (!colony.state.value || !colony.state.value.alive) return
+  if (!colony.revealedTiles.value.has(gx + ',' + gy)) return
+  const result = await colony.demolishAt(gx, gy)
+  if (result && result.success) {
+    interaction.clearSelection()
+  }
+}
+
+function onContextMenu(gx, gy, screenX, screenY) {
+  if (!colony.state.value || !colony.state.value.alive) return
+  if (!colony.revealedTiles.value.has(gx + ',' + gy)) return
+
+  // Find building at clicked coordinates
+  const placed = colony.state.value.placedBuildings || []
+  const building = placed.find((b) =>
+    b.cells && b.cells.length > 0
+      ? b.cells.some((cell) => cell.x === gx && cell.y === gy)
+      : b.x === gx && b.y === gy,
+  )
+
+  if (!building) return // No building at this location
+
+  // Open context menu
+  contextMenu.value = {
+    open: true,
+    x: screenX,
+    y: screenY,
+    building: building,
+  }
+}
+
 function onSelectBuilding(id) {
   if (interaction.selectedBuilding.value === id) interaction.clearSelection()
   else interaction.selectBuilding(id)
@@ -215,6 +343,14 @@ function resetFromCollapseModal() {
   colony.resetColony()
 }
 
+const devModeModel = computed({
+  get: () => colony.devModeEnabled.value,
+  set: (enabled) => {
+    colony.setDevModeEnabled(enabled)
+    colony.resetColony()
+  },
+})
+
 onMounted(() => {
   colony.init()
 })
@@ -227,6 +363,8 @@ onMounted(() => {
       :tick-speed="colony.tickSpeed.value"
       :on-set-speed="colony.setSpeed"
       :on-manual-tick="colony.manualTick"
+      :dev-mode-allowed="colony.devModeAllowed"
+      v-model:dev-mode-enabled="devModeModel"
     />
     <div class="relative min-h-0 flex-1">
       <!-- Desktop left sidebar: resources + population + analytics -->
@@ -354,9 +492,11 @@ onMounted(() => {
           :grid-width="colony.gridWidth.value"
           :grid-height="colony.gridHeight.value"
           :on-tile-click="onTileClick"
+          :on-context-menu="onContextMenu"
           :revealed-tiles="colony.revealedTiles.value"
           :terrain-map="colony.terrainMap.value"
           :active-events="colony.activeEvents.value"
+          :buildable-cells="colony.buildableCells.value"
         />
         <!-- Build placement status bar -->
         <UAlert
@@ -385,7 +525,9 @@ onMounted(() => {
         <!-- Terrain tooltip near cursor (desktop) -->
         <div
           v-if="
-            (hoverTerrainInfo || hoverBuildingInfo) &&
+            (hoverTerrainInfo ||
+              hoverBuildingInfo ||
+              hoverColonistInfo.length) &&
             !interaction.selectedBuilding.value
           "
           :style="hoverTooltipStyle"
@@ -438,6 +580,28 @@ onMounted(() => {
                 class="text-error"
               >
                 -{{ amount }} {{ res }}/t
+              </span>
+            </div>
+          </div>
+          <div
+            v-if="hoverColonistInfo.length"
+            class="border-default/60 mt-1 border-t pt-1 text-xs leading-tight"
+          >
+            <div class="text-highlighted mb-0.5 font-semibold">Colonists</div>
+            <div
+              v-for="colonist in hoverColonistInfo"
+              :key="`hover-colonist-${colonist.id}`"
+              class="mt-0.5 flex items-center gap-1.5"
+            >
+              <span
+                class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                :style="{ backgroundColor: colonist.roleColor }"
+              >
+                {{ colonist.initials }}
+              </span>
+              <span class="text-default">
+                {{ colonist.name }}
+                <span class="text-muted">({{ colonist.role }})</span>
               </span>
             </div>
           </div>
@@ -534,7 +698,10 @@ onMounted(() => {
             class="text-error h-20 w-20"
             aria-hidden="true"
           />
-          <p class="text-muted text-sm">{{ collapseMessage }}</p>
+          <p class="text-muted text-sm">{{ collapseSummary }}</p>
+          <p class="text-primary/90 text-xs font-medium">
+            Hint: {{ collapseHint }}
+          </p>
         </div>
       </template>
       <template #footer>
@@ -554,6 +721,43 @@ onMounted(() => {
         </div>
       </template>
     </UModal>
+
+    <!-- Building Context Menu -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenu.open"
+        @click="contextMenu.open = false"
+        @contextmenu.prevent
+        style="position: fixed; inset: 0; z-index: 9998"
+      >
+        <UCard
+          :style="{
+            position: 'fixed',
+            left: contextMenu.x + 'px',
+            top: contextMenu.y + 'px',
+            zIndex: 9999,
+            minWidth: '200px',
+          }"
+          @click.stop
+          :ui="{ body: 'p-1' }"
+        >
+          <div class="flex flex-col gap-0.5">
+            <UButton
+              v-for="(item, idx) in contextMenuItems"
+              :key="idx"
+              :label="item.label"
+              :icon="item.icon"
+              :color="item.color"
+              :disabled="item.disabled"
+              variant="ghost"
+              block
+              class="justify-start"
+              @click="item.onSelect"
+            />
+          </div>
+        </UCard>
+      </div>
+    </Teleport>
   </div>
 </template>
 <style scoped>

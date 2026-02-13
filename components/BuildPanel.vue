@@ -12,6 +12,10 @@ const props = defineProps({
 
 const emit = defineEmits(['select'])
 
+const availableBuildings = computed(() =>
+  (props.buildings || []).filter((b) => b.buildable !== false),
+)
+
 const thumbRefs = {}
 
 function setThumbRef(id, el) {
@@ -19,8 +23,8 @@ function setThumbRef(id, el) {
 }
 
 function drawAllThumbnails() {
-  if (!props.buildings) return
-  for (const b of props.buildings) {
+  if (!availableBuildings.value) return
+  for (const b of availableBuildings.value) {
     const canvas = thumbRefs[b.id]
     if (!canvas) continue
     const ctx = canvas.getContext('2d')
@@ -39,7 +43,7 @@ onMounted(() => {
   nextTick(drawAllThumbnails)
 })
 watch(
-  () => props.buildings,
+  () => availableBuildings.value,
   () => {
     nextTick(drawAllThumbnails)
   },
@@ -108,7 +112,7 @@ function selectBuilding(id) {
 
     <div class="flex flex-col gap-1.5">
       <UButton
-        v-for="b in buildings"
+        v-for="b in availableBuildings"
         :key="b.id"
         block
         color="neutral"

@@ -5,7 +5,10 @@ const props = defineProps({
   tickSpeed: Number,
   onSetSpeed: Function,
   onManualTick: Function,
+  devModeAllowed: Boolean,
+  devModeEnabled: Boolean,
 })
+const emit = defineEmits(['update:devModeEnabled'])
 
 const showSettings = ref(false)
 const colorMode = useColorMode()
@@ -26,6 +29,11 @@ const darkModeEnabled = computed({
   set: (enabled) => {
     colorMode.preference = enabled ? 'dark' : 'light'
   },
+})
+
+const devModeModel = computed({
+  get: () => !!props.devModeEnabled,
+  set: (enabled) => emit('update:devModeEnabled', !!enabled),
 })
 </script>
 
@@ -86,6 +94,13 @@ const darkModeEnabled = computed({
         <div class="flex items-center justify-between gap-3">
           <span class="text-sm">Dark mode</span>
           <USwitch v-model="darkModeEnabled" />
+        </div>
+        <div
+          v-if="devModeAllowed"
+          class="mt-3 flex items-center justify-between gap-3"
+        >
+          <span class="text-sm">Developer preset</span>
+          <USwitch v-model="devModeModel" />
         </div>
       </template>
     </UModal>

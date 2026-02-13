@@ -11,6 +11,8 @@ export const BUILDING_COLORS = {
   RTG: { fill: '#a855f7', accent: '#c084fc' },
   RECYCLING_CENTER: { fill: '#84cc16', accent: '#a3e635' },
   REPAIR_STATION: { fill: '#ef4444', accent: '#f87171' },
+  PIPELINE: { fill: '#94a3b8', accent: '#e2e8f0' },
+  MDV_LANDING_SITE: { fill: '#64748b', accent: '#e2e8f0' },
 }
 
 // Pre-generated caches
@@ -71,9 +73,9 @@ export function getTileColors(gw, gh, terrainMap) {
         baseLight = t.light
       }
 
-      const hue = baseHue + (n2 - 0.5) * 10
-      const sat = baseSat + (n1 - 0.5) * 15
-      const light = baseLight + (combined - 0.5) * 12
+      const hue = baseHue + (n2 - 0.5) * 14
+      const sat = baseSat + (n1 - 0.5) * 22
+      const light = baseLight + (combined - 0.5) * 18
       data[y * gw + x] =
         'hsl(' +
         hue.toFixed(0) +
@@ -96,37 +98,43 @@ export function clearDrawingCaches() {
   tileRocksCache = null
 }
 
+function tileHash(idx, salt) {
+  let h = (idx * 374761393 + salt * 668265263 + 42) | 0
+  h = (h ^ (h >> 13)) * 1274126177
+  return ((h ^ (h >> 16)) & 0x7fffffff) / 0x7fffffff
+}
+
 export function getTileRocks(gw, gh) {
   if (tileRocksCache && tileRocksCache.w === gw && tileRocksCache.h === gh)
     return tileRocksCache.data
   const data = []
   for (let i = 0; i < gw * gh; i++) {
-    const r = Math.random()
+    const r = tileHash(i, 0)
     if (r < 0.08) {
       data.push({
         type: 'rock_large',
-        ox: Math.random() * 0.4 + 0.1,
-        oy: Math.random() * 0.4 + 0.1,
-        size: 0.2 + Math.random() * 0.15,
+        ox: tileHash(i, 1) * 0.4 + 0.1,
+        oy: tileHash(i, 2) * 0.4 + 0.1,
+        size: 0.2 + tileHash(i, 3) * 0.15,
         color: '#9e8a6a',
       })
     } else if (r < 0.22) {
       const pebbles = []
-      const count = 1 + Math.floor(Math.random() * 3)
+      const count = 1 + Math.floor(tileHash(i, 4) * 3)
       for (let p = 0; p < count; p++) {
         pebbles.push({
-          ox: Math.random() * 0.7 + 0.1,
-          oy: Math.random() * 0.7 + 0.1,
-          size: 0.04 + Math.random() * 0.06,
+          ox: tileHash(i, 5 + p * 3) * 0.7 + 0.1,
+          oy: tileHash(i, 6 + p * 3) * 0.7 + 0.1,
+          size: 0.04 + tileHash(i, 7 + p * 3) * 0.06,
         })
       }
       data.push({ type: 'pebbles', pebbles, color: '#a08e70' })
     } else if (r < 0.28) {
       data.push({
         type: 'crater',
-        ox: 0.25 + Math.random() * 0.3,
-        oy: 0.25 + Math.random() * 0.3,
-        size: 0.15 + Math.random() * 0.15,
+        ox: 0.25 + tileHash(i, 14) * 0.3,
+        oy: 0.25 + tileHash(i, 15) * 0.3,
+        size: 0.15 + tileHash(i, 16) * 0.15,
       })
     } else {
       data.push(null)
@@ -217,59 +225,73 @@ export function drawRocks(ctx, rock, cx, cy, hexS) {
 export function drawTerrainOverlay(ctx, tile, cx, cy, hexS, tick) {
   const r = hexS * 0.5
 
+  function tintHex(colorA, colorB, alpha = 0.3) {
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.9)
+    grad.addColorStop(0, colorA)
+    grad.addColorStop(1, colorB)
+    ctx.fillStyle = grad
+    hexPath(ctx, cx, cy, hexS)
+    ctx.fill()
+    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`
+    ctx.lineWidth = Math.max(0.8, hexS * 0.045)
+    hexPath(ctx, cx, cy, hexS * 0.93)
+    ctx.stroke()
+  }
+
   // Draw deposit indicators
   if (tile.deposit) {
     switch (tile.deposit.id) {
       case 'MINERAL_VEIN': {
-        // Orange sparkle dots
-        for (let i = 0; i < 4; i++) {
-          const angle = (i / 4) * Math.PI * 2 + 0.5
-          const dist = r * 0.4
+        tintHex('rgba(251, 146, 60, 0.24)', 'rgba(251, 146, 60, 0.02)', 0.34)
+        for (let i = 0; i < 3; i++) {
+          const angle = (i / 3) * Math.PI * 2 - Math.PI / 2
+          const dist = r * 0.34
           const px = cx + Math.cos(angle) * dist
           const py = cy + Math.sin(angle) * dist
-          const alpha = 0.4 + 0.4 * Math.sin(tick * 0.003 + i * 1.5)
-          ctx.fillStyle = `rgba(251, 146, 60, ${alpha})`
+          const alpha = 0.72 + 0.2 * Math.sin(tick * 0.003 + i * 1.7)
+          ctx.fillStyle = `rgba(255, 184, 82, ${alpha})`
           ctx.beginPath()
-          ctx.arc(px, py, hexS * 0.04, 0, Math.PI * 2)
+          ctx.arc(px, py, hexS * 0.085, 0, Math.PI * 2)
           ctx.fill()
+          ctx.strokeStyle = 'rgba(138, 79, 20, 0.8)'
+          ctx.lineWidth = Math.max(0.8, hexS * 0.03)
+          ctx.stroke()
         }
         break
       }
       case 'ICE_DEPOSIT': {
-        // Blue-white radial glow + crystal shapes
-        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.7)
-        grad.addColorStop(0, 'rgba(147, 197, 253, 0.2)')
-        grad.addColorStop(1, 'rgba(147, 197, 253, 0)')
-        ctx.fillStyle = grad
-        hexPath(ctx, cx, cy, hexS)
-        ctx.fill()
-        // Small crystal shapes
-        for (let i = 0; i < 2; i++) {
-          const angle = i * Math.PI + tick * 0.0005
-          const dist = r * 0.3
-          const px = cx + Math.cos(angle) * dist
-          const py = cy + Math.sin(angle) * dist
-          ctx.save()
-          ctx.translate(px, py)
-          ctx.rotate(angle)
-          ctx.fillStyle = 'rgba(219, 234, 254, 0.5)'
-          ctx.fillRect(-hexS * 0.03, -hexS * 0.03, hexS * 0.06, hexS * 0.06)
-          ctx.restore()
+        tintHex('rgba(125, 211, 252, 0.22)', 'rgba(125, 211, 252, 0.02)', 0.38)
+        const spoke = hexS * 0.22
+        ctx.strokeStyle = 'rgba(219, 234, 254, 0.92)'
+        ctx.lineWidth = Math.max(1, hexS * 0.04)
+        for (let i = 0; i < 6; i++) {
+          const a = i * (Math.PI / 3) + tick * 0.00015
+          ctx.beginPath()
+          ctx.moveTo(cx, cy)
+          ctx.lineTo(cx + Math.cos(a) * spoke, cy + Math.sin(a) * spoke)
+          ctx.stroke()
         }
+        ctx.fillStyle = 'rgba(186, 230, 253, 0.95)'
+        ctx.beginPath()
+        ctx.arc(cx, cy, hexS * 0.06, 0, Math.PI * 2)
+        ctx.fill()
         break
       }
       case 'GEOTHERMAL_VENT': {
-        // Orange-red glow at center
-        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.6)
-        grad.addColorStop(0, 'rgba(255, 100, 0, 0.25)')
-        grad.addColorStop(1, 'rgba(255, 100, 0, 0)')
-        ctx.fillStyle = grad
-        hexPath(ctx, cx, cy, hexS)
+        tintHex('rgba(249, 115, 22, 0.23)', 'rgba(249, 115, 22, 0.03)', 0.34)
+        ctx.fillStyle = 'rgba(255, 181, 97, 0.9)'
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - hexS * 0.2)
+        ctx.lineTo(cx + hexS * 0.14, cy + hexS * 0.1)
+        ctx.lineTo(cx - hexS * 0.14, cy + hexS * 0.1)
+        ctx.closePath()
         ctx.fill()
-        // Rising heat wave lines
-        ctx.strokeStyle = 'rgba(255, 150, 50, 0.3)'
-        ctx.lineWidth = 0.8
-        for (let i = 0; i < 2; i++) {
+        ctx.strokeStyle = 'rgba(120, 53, 15, 0.8)'
+        ctx.lineWidth = Math.max(0.8, hexS * 0.03)
+        ctx.stroke()
+        ctx.strokeStyle = 'rgba(255, 214, 170, 0.72)'
+        ctx.lineWidth = Math.max(0.7, hexS * 0.03)
+        for (let i = 0; i < 3; i++) {
           const baseX = cx + (i - 0.5) * r * 0.4
           const yOff = ((tick * 0.02 + i * 30) % 20) - 10
           ctx.beginPath()
@@ -285,18 +307,19 @@ export function drawTerrainOverlay(ctx, tile, cx, cy, hexS, tick) {
         break
       }
       case 'RARE_EARTH': {
-        // Purple shimmer dots
-        for (let i = 0; i < 3; i++) {
-          const angle = (i / 3) * Math.PI * 2 + 1.0
-          const dist = r * 0.35
-          const px = cx + Math.cos(angle) * dist
-          const py = cy + Math.sin(angle) * dist
-          const alpha = 0.3 + 0.3 * Math.sin(tick * 0.002 + i * 2.0)
-          ctx.fillStyle = `rgba(168, 85, 247, ${alpha})`
-          ctx.beginPath()
-          ctx.arc(px, py, hexS * 0.035, 0, Math.PI * 2)
-          ctx.fill()
-        }
+        tintHex('rgba(192, 132, 252, 0.2)', 'rgba(192, 132, 252, 0.03)', 0.38)
+        const d = hexS * 0.2
+        ctx.fillStyle = 'rgba(233, 213, 255, 0.94)'
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - d)
+        ctx.lineTo(cx + d * 0.78, cy)
+        ctx.lineTo(cx, cy + d)
+        ctx.lineTo(cx - d * 0.78, cy)
+        ctx.closePath()
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(126, 34, 206, 0.85)'
+        ctx.lineWidth = Math.max(0.8, hexS * 0.03)
+        ctx.stroke()
         break
       }
     }
@@ -306,26 +329,34 @@ export function drawTerrainOverlay(ctx, tile, cx, cy, hexS, tick) {
   if (tile.hazard) {
     switch (tile.hazard.id) {
       case 'RADIATION': {
-        // Pulsing yellow-green concentric rings
+        tintHex('rgba(163, 230, 53, 0.24)', 'rgba(163, 230, 53, 0.02)', 0.45)
         const pulseRadius = ((tick * 0.004) % 1.0) * r * 0.8
-        const alpha = 0.3 * (1 - pulseRadius / (r * 0.8))
-        ctx.strokeStyle = `rgba(163, 230, 53, ${alpha})`
-        ctx.lineWidth = 1
+        const alpha = 0.62 * (1 - pulseRadius / (r * 0.8))
+        ctx.strokeStyle = `rgba(190, 242, 100, ${alpha})`
+        ctx.lineWidth = Math.max(1, hexS * 0.05)
         ctx.beginPath()
         ctx.arc(cx, cy, pulseRadius, 0, Math.PI * 2)
         ctx.stroke()
-        // Static warning dot at center
-        ctx.fillStyle = 'rgba(163, 230, 53, 0.4)'
+        ctx.fillStyle = 'rgba(101, 163, 13, 0.92)'
+        for (let i = 0; i < 3; i++) {
+          const a = -Math.PI / 2 + i * ((Math.PI * 2) / 3)
+          ctx.beginPath()
+          ctx.arc(cx, cy, hexS * 0.2, a - 0.42, a + 0.42)
+          ctx.lineTo(cx, cy)
+          ctx.closePath()
+          ctx.fill()
+        }
+        ctx.fillStyle = 'rgba(217, 249, 157, 0.95)'
         ctx.beginPath()
-        ctx.arc(cx, cy, hexS * 0.04, 0, Math.PI * 2)
+        ctx.arc(cx, cy, hexS * 0.06, 0, Math.PI * 2)
         ctx.fill()
         break
       }
       case 'UNSTABLE': {
-        // Static dark crack lines from center
-        ctx.strokeStyle = 'rgba(80, 60, 40, 0.6)'
-        ctx.lineWidth = 0.8
-        const angles = [0.3, 2.5, 4.5]
+        tintHex('rgba(120, 113, 108, 0.26)', 'rgba(120, 113, 108, 0.03)', 0.3)
+        ctx.strokeStyle = 'rgba(41, 37, 36, 0.85)'
+        ctx.lineWidth = Math.max(0.9, hexS * 0.04)
+        const angles = [0.2, 1.8, 3.0, 4.5]
         for (const a of angles) {
           ctx.beginPath()
           ctx.moveTo(cx, cy)
@@ -336,16 +367,23 @@ export function drawTerrainOverlay(ctx, tile, cx, cy, hexS, tick) {
           ctx.quadraticCurveTo(midX, midY, endX, endY)
           ctx.stroke()
         }
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.95)'
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - hexS * 0.16)
+        ctx.lineTo(cx + hexS * 0.11, cy + hexS * 0.12)
+        ctx.lineTo(cx - hexS * 0.11, cy + hexS * 0.12)
+        ctx.closePath()
+        ctx.fill()
         break
       }
       case 'TOXIC_VENT': {
-        // Green wisps drifting upward
+        tintHex('rgba(74, 222, 128, 0.22)', 'rgba(74, 222, 128, 0.02)', 0.4)
         for (let i = 0; i < 3; i++) {
           const baseX = cx + (i - 1) * r * 0.25
           const yOff = (tick * 0.015 + i * 20) % 30
           const py = cy + r * 0.3 - yOff * hexS * 0.015
-          const alpha = 0.25 * (1 - yOff / 30)
-          ctx.fillStyle = `rgba(74, 222, 128, ${alpha})`
+          const alpha = 0.42 * (1 - yOff / 30)
+          ctx.fillStyle = `rgba(134, 239, 172, ${alpha})`
           ctx.beginPath()
           ctx.arc(
             baseX,
@@ -356,6 +394,11 @@ export function drawTerrainOverlay(ctx, tile, cx, cy, hexS, tick) {
           )
           ctx.fill()
         }
+        ctx.strokeStyle = 'rgba(20, 83, 45, 0.9)'
+        ctx.lineWidth = Math.max(0.8, hexS * 0.035)
+        ctx.beginPath()
+        ctx.arc(cx, cy + hexS * 0.07, hexS * 0.12, 0, Math.PI * 2)
+        ctx.stroke()
         break
       }
     }
@@ -379,6 +422,31 @@ export function drawEventOverlay(ctx, eventType, canvasW, canvasH, tick) {
         const wobble = Math.sin(tick * 0.01 + i) * 5
         ctx.beginPath()
         ctx.arc(baseX, baseY + wobble, 1.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      break
+    }
+    case 'METEOR_STRIKE': {
+      for (let i = 0; i < 8; i++) {
+        const t = (tick * 0.015 + i * 17) % 1
+        const startX = ((i * 211) % (canvasW + 120)) - 60
+        const startY = ((i * 97) % (canvasH * 0.5)) - 120
+        const x = startX + t * 220
+        const y = startY + t * 220
+
+        const tail = ctx.createLinearGradient(x - 20, y - 20, x, y)
+        tail.addColorStop(0, 'rgba(251, 191, 36, 0)')
+        tail.addColorStop(1, 'rgba(251, 191, 36, 0.45)')
+        ctx.strokeStyle = tail
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(x - 26, y - 26)
+        ctx.lineTo(x, y)
+        ctx.stroke()
+
+        ctx.fillStyle = 'rgba(255, 237, 213, 0.85)'
+        ctx.beginPath()
+        ctx.arc(x, y, 2.2, 0, Math.PI * 2)
         ctx.fill()
       }
       break
@@ -446,239 +514,645 @@ export function drawHPBar(ctx, cx, cy, hexS, hp, maxHp) {
 }
 
 // Distinct building shapes — center-relative drawing
-export function drawBuilding(ctx, type, x, y, size, alpha) {
+export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
   const colors = BUILDING_COLORS[type] || { fill: '#888', accent: '#aaa' }
-  ctx.globalAlpha = alpha
   const cx = x + size / 2
   const cy = y + size / 2
   const r = size * 0.4
 
+  ctx.save()
+  ctx.globalAlpha = alpha
+  if (rotation) {
+    ctx.translate(cx, cy)
+    ctx.rotate(rotation)
+    ctx.translate(-cx, -cy)
+  }
+
+  const hull = '#ecf2f9'
+  const hullShadow = '#d7e0ea'
+  const hullLine = '#8fa2b6'
+
+  function drawHullPanel(px, py, w, h) {
+    ctx.fillStyle = hull
+    ctx.fillRect(px, py, w, h)
+    ctx.strokeStyle = hullLine
+    ctx.lineWidth = 1
+    ctx.strokeRect(px, py, w, h)
+    ctx.fillStyle = hullShadow
+    ctx.fillRect(px, py + h * 0.62, w, h * 0.38)
+  }
+
   switch (type) {
     case 'SOLAR_PANEL': {
-      const pw = r * 1.8
-      const ph = r * 1.1
-      ctx.fillStyle = colors.fill
-      ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph)
-      ctx.strokeStyle = colors.accent
-      ctx.lineWidth = 0.8
-      for (let i = 1; i < 3; i++) {
-        const gx = cx - pw / 2 + (pw / 3) * i
+      const w = r * 1.95
+      const h = r * 1.2
+      const px = cx - w / 2
+      const py = cy - h / 2
+      ctx.fillStyle = '#dbe4ee'
+      ctx.fillRect(px - r * 0.06, py - r * 0.06, w + r * 0.12, h + r * 0.12)
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1
+      ctx.strokeRect(px - r * 0.06, py - r * 0.06, w + r * 0.12, h + r * 0.12)
+
+      ctx.fillStyle = '#1e2f4f'
+      ctx.fillRect(px, py, w, h)
+      ctx.strokeStyle = '#9ac3ff'
+      ctx.lineWidth = 0.9
+      for (let i = 1; i < 5; i++) {
+        const gx = px + (w / 5) * i
         ctx.beginPath()
-        ctx.moveTo(gx, cy - ph / 2)
-        ctx.lineTo(gx, cy + ph / 2)
+        ctx.moveTo(gx, py)
+        ctx.lineTo(gx, py + h)
         ctx.stroke()
       }
-      const midY = cy
-      ctx.beginPath()
-      ctx.moveTo(cx - pw / 2, midY)
-      ctx.lineTo(cx + pw / 2, midY)
-      ctx.stroke()
-      ctx.fillStyle = colors.accent
-      ctx.beginPath()
-      ctx.arc(
-        cx + pw / 2 - r * 0.3,
-        cy - ph / 2 - r * 0.2,
-        r * 0.18,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
+      for (let i = 1; i < 3; i++) {
+        const gy = py + (h / 3) * i
+        ctx.beginPath()
+        ctx.moveTo(px, gy)
+        ctx.lineTo(px + w, gy)
+        ctx.stroke()
+      }
+      ctx.fillStyle = hullLine
+      ctx.fillRect(cx - r * 0.08, py + h, r * 0.16, r * 0.34)
       break
     }
+
     case 'HYDROPONIC_FARM': {
-      ctx.fillStyle = colors.fill
+      const domeR = r * 0.98
+      ctx.fillStyle = 'rgba(210, 236, 255, 0.72)'
       ctx.beginPath()
-      ctx.ellipse(cx, cy, r * 1.1, r * 0.75, 0, 0, Math.PI * 2)
+      ctx.arc(cx, cy, domeR, 0, Math.PI * 2)
       ctx.fill()
-      ctx.strokeStyle = colors.accent
-      ctx.lineWidth = 1.2
-      ctx.beginPath()
-      ctx.arc(cx, cy + r * 0.1, r * 0.6, Math.PI * 1.1, Math.PI * 1.9)
+      ctx.strokeStyle = '#b7d7f8'
+      ctx.lineWidth = 1.1
       ctx.stroke()
-      ctx.fillStyle = colors.accent
+
+      ctx.save()
       ctx.beginPath()
-      ctx.moveTo(cx, cy - r * 0.35)
-      ctx.quadraticCurveTo(cx + r * 0.4, cy - r * 0.1, cx, cy + r * 0.25)
-      ctx.quadraticCurveTo(cx - r * 0.4, cy - r * 0.1, cx, cy - r * 0.35)
-      ctx.fill()
+      ctx.arc(cx, cy, domeR * 0.86, 0, Math.PI * 2)
+      ctx.clip()
+      ctx.strokeStyle = '#22c55e'
+      ctx.lineWidth = 1.2
+      for (let i = -2; i <= 2; i++) {
+        const y = cy + i * r * 0.22
+        ctx.beginPath()
+        ctx.moveTo(cx - r * 0.72, y)
+        ctx.lineTo(cx + r * 0.72, y)
+        ctx.stroke()
+      }
+      ctx.restore()
       break
     }
+
     case 'WATER_EXTRACTOR': {
-      ctx.strokeStyle = colors.fill
-      ctx.lineWidth = 1.2
+      const bodyR = r * 0.86
+      ctx.fillStyle = hull
       ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.arc(cx, cy, r * 0.65, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.fillStyle = colors.accent
-      ctx.beginPath()
-      ctx.moveTo(cx, cy - r * 0.35)
-      ctx.quadraticCurveTo(cx + r * 0.25, cy, cx, cy + r * 0.3)
-      ctx.quadraticCurveTo(cx - r * 0.25, cy, cx, cy - r * 0.35)
+      ctx.arc(cx, cy, bodyR, 0, Math.PI * 2)
       ctx.fill()
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+
+      ctx.fillStyle = '#dbeafe'
+      ctx.beginPath()
+      ctx.arc(cx, cy, bodyR * 0.58, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.fillStyle = '#60a5fa'
+      ctx.beginPath()
+      ctx.arc(cx, cy, bodyR * 0.24, 0, Math.PI * 2)
+      ctx.fill()
+      for (let i = 0; i < 3; i++) {
+        const a = -Math.PI / 2 + i * ((Math.PI * 2) / 3)
+        ctx.beginPath()
+        ctx.arc(
+          cx + Math.cos(a) * bodyR * 0.66,
+          cy + Math.sin(a) * bodyR * 0.66,
+          bodyR * 0.18,
+          0,
+          Math.PI * 2,
+        )
+        ctx.fill()
+      }
       break
     }
+
     case 'MINE': {
-      ctx.fillStyle = colors.fill
+      const lobeR = r * 0.72
+      const off = r * 0.52
+      ctx.fillStyle = hull
       ctx.beginPath()
-      ctx.moveTo(cx, cy - r)
-      ctx.lineTo(cx + r * 0.8, cy)
-      ctx.lineTo(cx, cy + r)
-      ctx.lineTo(cx - r * 0.8, cy)
+      ctx.arc(cx - off, cy, lobeR, 0, Math.PI * 2)
+      ctx.arc(cx + off, cy, lobeR, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.arc(cx - off, cy, lobeR, 0, Math.PI * 2)
+      ctx.arc(cx + off, cy, lobeR, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.fillStyle = '#d8e2ed'
+      ctx.beginPath()
+      ctx.ellipse(cx, cy, lobeR * 0.5, lobeR * 0.32, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.fillStyle = '#475569'
+      ctx.beginPath()
+      ctx.moveTo(cx - off * 0.88, cy + lobeR * 0.16)
+      ctx.lineTo(cx + off * 0.35, cy - lobeR * 0.08)
+      ctx.lineTo(cx + off * 0.35, cy + lobeR * 0.38)
       ctx.closePath()
       ctx.fill()
-      ctx.strokeStyle = colors.accent
-      ctx.lineWidth = 1.5
+      ctx.fillStyle = colors.accent
       ctx.beginPath()
-      ctx.moveTo(cx - r * 0.35, cy - r * 0.35)
-      ctx.lineTo(cx + r * 0.35, cy + r * 0.35)
-      ctx.moveTo(cx + r * 0.35, cy - r * 0.35)
-      ctx.lineTo(cx - r * 0.1, cy + r * 0.1)
-      ctx.stroke()
+      ctx.moveTo(cx + off * 0.35, cy - lobeR * 0.08)
+      ctx.lineTo(cx + off * 0.8, cy + lobeR * 0.15)
+      ctx.lineTo(cx + off * 0.35, cy + lobeR * 0.38)
+      ctx.closePath()
+      ctx.fill()
       break
     }
+
     case 'HABITAT': {
-      const baseW = r * 1.4
-      const baseH = r * 0.45
-      ctx.fillStyle = colors.fill
-      ctx.fillRect(cx - baseW / 2, cy, baseW, baseH)
-      ctx.beginPath()
-      ctx.arc(cx, cy, r * 0.7, Math.PI, 0)
-      ctx.fill()
-      ctx.strokeStyle = colors.accent
+      const w = r * 2.05
+      const h = r * 1.45
+      const px = cx - w / 2
+      const py = cy - h / 2
+      drawHullPanel(px, py, w, h)
+
+      ctx.strokeStyle = '#b6c6d8'
       ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.arc(cx, cy - r * 0.1, r * 0.25, Math.PI * 1.2, Math.PI * 1.8)
-      ctx.stroke()
+      for (let i = 1; i < 4; i++) {
+        const sx = px + (w / 4) * i
+        ctx.beginPath()
+        ctx.moveTo(sx, py + r * 0.08)
+        ctx.lineTo(sx, py + h - r * 0.08)
+        ctx.stroke()
+      }
       ctx.fillStyle = colors.accent
-      ctx.fillRect(cx - r * 0.1, cy, r * 0.2, baseH * 0.8)
+      for (let i = 0; i < 3; i++) {
+        const wx = px + w * 0.2 + i * w * 0.22
+        ctx.fillRect(wx, py + h * 0.3, w * 0.12, h * 0.2)
+      }
       break
     }
+
     case 'OXYGEN_GENERATOR': {
-      // Cylindrical tank with O2 bubbles
-      ctx.fillStyle = colors.fill
-      ctx.beginPath()
-      ctx.ellipse(cx, cy, r * 0.55, r * 0.9, 0, 0, Math.PI * 2)
-      ctx.fill()
-      // Tank bands
-      ctx.strokeStyle = colors.accent
-      ctx.lineWidth = 1.2
-      ctx.beginPath()
-      ctx.moveTo(cx - r * 0.55, cy - r * 0.25)
-      ctx.lineTo(cx + r * 0.55, cy - r * 0.25)
-      ctx.moveTo(cx - r * 0.55, cy + r * 0.25)
-      ctx.lineTo(cx + r * 0.55, cy + r * 0.25)
-      ctx.stroke()
-      // O2 bubbles
-      ctx.fillStyle = colors.accent
-      ctx.beginPath()
-      ctx.arc(cx - r * 0.15, cy - r * 0.05, r * 0.1, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(cx + r * 0.15, cy + r * 0.15, r * 0.08, 0, Math.PI * 2)
-      ctx.fill()
+      const rr = r * 0.42
+      const points = [
+        [cx - r * 0.52, cy],
+        [cx + r * 0.52, cy],
+        [cx, cy - r * 0.52],
+      ]
+      for (const [px, py] of points) {
+        ctx.fillStyle = hull
+        ctx.beginPath()
+        ctx.arc(px, py, rr, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = hullLine
+        ctx.lineWidth = 1
+        ctx.stroke()
+        ctx.fillStyle = colors.accent
+        ctx.beginPath()
+        ctx.arc(px, py, rr * 0.32, 0, Math.PI * 2)
+        ctx.fill()
+      }
       break
     }
+
     case 'RTG': {
-      // Nuclear symbol — hexagonal casing with radiation trefoil
-      ctx.fillStyle = colors.fill
+      ctx.fillStyle = hullShadow
       ctx.beginPath()
       for (let i = 0; i < 6; i++) {
-        const angle = Math.PI / 6 + (Math.PI / 3) * i
-        const vx = cx + r * 0.8 * Math.cos(angle)
-        const vy = cy + r * 0.8 * Math.sin(angle)
+        const a = Math.PI / 6 + (Math.PI / 3) * i
+        const vx = cx + r * 0.98 * Math.cos(a)
+        const vy = cy + r * 0.98 * Math.sin(a)
         if (i === 0) ctx.moveTo(vx, vy)
         else ctx.lineTo(vx, vy)
       }
       ctx.closePath()
       ctx.fill()
-      // Inner glow circle
+      ctx.strokeStyle = hullLine
+      ctx.stroke()
+
       ctx.fillStyle = colors.accent
       ctx.beginPath()
-      ctx.arc(cx, cy, r * 0.3, 0, Math.PI * 2)
+      ctx.arc(cx, cy, r * 0.2, 0, Math.PI * 2)
       ctx.fill()
-      // Three blades (trefoil)
-      ctx.fillStyle = colors.fill
+
+      ctx.fillStyle = '#374151'
       for (let i = 0; i < 3; i++) {
-        const angle = ((Math.PI * 2) / 3) * i - Math.PI / 2
+        const a = -Math.PI / 2 + i * ((Math.PI * 2) / 3)
         ctx.beginPath()
-        ctx.arc(cx, cy, r * 0.55, angle - 0.35, angle + 0.35)
+        ctx.arc(cx, cy, r * 0.56, a - 0.34, a + 0.34)
         ctx.lineTo(cx, cy)
         ctx.closePath()
         ctx.fill()
       }
       break
     }
+
     case 'RECYCLING_CENTER': {
-      // Circular arrows (recycling symbol) around center
-      ctx.fillStyle = colors.fill
+      const podR = r * 0.46
+      const orbit = r * 0.56
+      const points = [
+        [cx, cy - orbit],
+        [cx + orbit * 0.86, cy + orbit * 0.5],
+        [cx - orbit * 0.86, cy + orbit * 0.5],
+      ]
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 5
       ctx.beginPath()
-      ctx.arc(cx, cy, r * 0.7, 0, Math.PI * 2)
-      ctx.fill()
-      // Three curved arrows
-      ctx.strokeStyle = colors.accent
-      ctx.lineWidth = 2
-      for (let i = 0; i < 3; i++) {
-        const startA = ((Math.PI * 2) / 3) * i
-        const endA = startA + Math.PI * 0.5
+      ctx.moveTo(points[0][0], points[0][1])
+      ctx.lineTo(points[1][0], points[1][1])
+      ctx.lineTo(points[2][0], points[2][1])
+      ctx.closePath()
+      ctx.stroke()
+      for (const [px, py] of points) {
+        ctx.fillStyle = hull
         ctx.beginPath()
-        ctx.arc(cx, cy, r * 0.45, startA, endA)
+        ctx.arc(px, py, podR, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = hullLine
+        ctx.lineWidth = 1
         ctx.stroke()
-        // Arrow tip
-        const tipX = cx + r * 0.45 * Math.cos(endA)
-        const tipY = cy + r * 0.45 * Math.sin(endA)
         ctx.fillStyle = colors.accent
         ctx.beginPath()
-        ctx.moveTo(tipX, tipY)
-        ctx.lineTo(
-          tipX + r * 0.15 * Math.cos(endA - 0.8),
-          tipY + r * 0.15 * Math.sin(endA - 0.8),
-        )
-        ctx.lineTo(
-          tipX + r * 0.15 * Math.cos(endA + 0.8),
-          tipY + r * 0.15 * Math.sin(endA + 0.8),
-        )
-        ctx.closePath()
+        ctx.arc(px, py, podR * 0.35, 0, Math.PI * 2)
         ctx.fill()
       }
       break
     }
-    case 'REPAIR_STATION': {
-      // Wrench/gear shape
-      ctx.fillStyle = colors.fill
-      // Gear body
+
+    case 'PIPELINE': {
+      const nodeR = r * 0.52
+      ctx.fillStyle = '#0f172a'
       ctx.beginPath()
-      ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2)
+      ctx.arc(cx, cy, nodeR, 0, Math.PI * 2)
       ctx.fill()
-      // Gear teeth
-      for (let i = 0; i < 8; i++) {
-        const angle = (Math.PI / 4) * i
-        const tx = cx + r * 0.65 * Math.cos(angle)
-        const ty = cy + r * 0.65 * Math.sin(angle)
-        ctx.fillRect(tx - r * 0.1, ty - r * 0.1, r * 0.2, r * 0.2)
+
+      ctx.strokeStyle = '#cbd5e1'
+      ctx.lineWidth = Math.max(1.2, r * 0.09)
+      ctx.beginPath()
+      ctx.arc(cx, cy, nodeR, 0, Math.PI * 2)
+      ctx.stroke()
+
+      ctx.fillStyle = '#1e293b'
+      ctx.beginPath()
+      ctx.arc(cx, cy, nodeR * 0.46, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+
+    case 'REPAIR_STATION': {
+      ctx.fillStyle = hullShadow
+      ctx.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI / 6 + i * (Math.PI / 3)
+        const vx = cx + r * 0.96 * Math.cos(a)
+        const vy = cy + r * 0.96 * Math.sin(a)
+        if (i === 0) ctx.moveTo(vx, vy)
+        else ctx.lineTo(vx, vy)
       }
-      // Center hole
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+
       ctx.fillStyle = colors.accent
       ctx.beginPath()
-      ctx.arc(cx, cy, r * 0.2, 0, Math.PI * 2)
+      ctx.arc(cx, cy, r * 0.26, 0, Math.PI * 2)
       ctx.fill()
-      // Cross
-      ctx.strokeStyle = colors.fill
-      ctx.lineWidth = 1.5
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 1.4
       ctx.beginPath()
-      ctx.moveTo(cx - r * 0.12, cy)
-      ctx.lineTo(cx + r * 0.12, cy)
-      ctx.moveTo(cx, cy - r * 0.12)
-      ctx.lineTo(cx, cy + r * 0.12)
+      ctx.moveTo(cx - r * 0.14, cy)
+      ctx.lineTo(cx + r * 0.14, cy)
+      ctx.moveTo(cx, cy - r * 0.14)
+      ctx.lineTo(cx, cy + r * 0.14)
       ctx.stroke()
       break
     }
+
+    case 'MDV_LANDING_SITE': {
+      const bodyR = r * 0.78
+      const legInner = bodyR * 0.92
+      const legOuter = bodyR * 1.45
+      const padR = r * 0.16
+
+      // Central hull (seen from above) with slight faceting.
+      ctx.fillStyle = '#dce5ef'
+      ctx.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const a = -Math.PI / 2 + i * (Math.PI / 3)
+        const vx = cx + bodyR * Math.cos(a)
+        const vy = cy + bodyR * Math.sin(a)
+        if (i === 0) ctx.moveTo(vx, vy)
+        else ctx.lineTo(vx, vy)
+      }
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = '#93a7bd'
+      ctx.lineWidth = Math.max(1.2, r * 0.09)
+      ctx.stroke()
+
+      // Upper hull ring.
+      ctx.fillStyle = '#e7eef6'
+      ctx.beginPath()
+      ctx.arc(cx, cy, bodyR * 0.58, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#a7b8cb'
+      ctx.lineWidth = Math.max(0.9, r * 0.06)
+      ctx.stroke()
+
+      // Six landing legs and pads.
+      ctx.strokeStyle = '#8fa2b6'
+      ctx.lineWidth = Math.max(1.2, r * 0.11)
+      ctx.lineCap = 'round'
+      for (let i = 0; i < 6; i++) {
+        const a = -Math.PI / 2 + i * (Math.PI / 3)
+        const sx = cx + legInner * Math.cos(a)
+        const sy = cy + legInner * Math.sin(a)
+        const ex = cx + legOuter * Math.cos(a)
+        const ey = cy + legOuter * Math.sin(a)
+        ctx.beginPath()
+        ctx.moveTo(sx, sy)
+        ctx.lineTo(ex, ey)
+        ctx.stroke()
+
+        ctx.fillStyle = '#d9e3ee'
+        ctx.beginPath()
+        ctx.arc(ex, ey, padR, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#8fa2b6'
+        ctx.lineWidth = Math.max(0.8, r * 0.05)
+        ctx.stroke()
+        ctx.strokeStyle = '#8fa2b6'
+        ctx.lineWidth = Math.max(1.2, r * 0.11)
+      }
+
+      // Side hatch (door) on one side.
+      const doorA = Math.PI / 5
+      const doorX = cx + bodyR * 0.42 * Math.cos(doorA)
+      const doorY = cy + bodyR * 0.42 * Math.sin(doorA)
+      ctx.save()
+      ctx.translate(doorX, doorY)
+      ctx.rotate(doorA)
+      ctx.fillStyle = '#9eb2c7'
+      ctx.fillRect(-r * 0.12, -r * 0.09, r * 0.24, r * 0.18)
+      ctx.strokeStyle = '#7e93a8'
+      ctx.lineWidth = Math.max(0.7, r * 0.045)
+      ctx.strokeRect(-r * 0.12, -r * 0.09, r * 0.24, r * 0.18)
+      ctx.restore()
+
+      // Opposite porthole windows.
+      const winBase = doorA + Math.PI
+      ctx.fillStyle = '#b9d6f5'
+      for (let i = -1; i <= 1; i++) {
+        const wa = winBase + i * 0.24
+        const wx = cx + bodyR * 0.44 * Math.cos(wa)
+        const wy = cy + bodyR * 0.44 * Math.sin(wa)
+        ctx.beginPath()
+        ctx.arc(wx, wy, r * 0.065, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#7e93a8'
+        ctx.lineWidth = Math.max(0.55, r * 0.035)
+        ctx.stroke()
+      }
+
+      // Core cap.
+      ctx.fillStyle = '#c1d5ea'
+      ctx.beginPath()
+      ctx.arc(cx, cy, r * 0.16, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+
     default: {
-      ctx.fillStyle = colors.fill
-      ctx.fillRect(x + size * 0.15, y + size * 0.15, size * 0.7, size * 0.7)
+      drawHullPanel(x + size * 0.15, y + size * 0.15, size * 0.7, size * 0.7)
     }
   }
-  ctx.globalAlpha = 1
+  ctx.restore()
+}
+
+// Draw buildings that span multiple tiles using per-tile modules.
+export function drawFootprintBuilding(
+  ctx,
+  type,
+  cells,
+  z,
+  ox,
+  oy,
+  hexS,
+  alpha,
+) {
+  if (!cells || cells.length <= 1) return false
+  const colors = BUILDING_COLORS[type] || { fill: '#888', accent: '#aaa' }
+  const centers = cells.map((cell) => ({
+    x: hexScreenX(cell.x, z, ox),
+    y: hexScreenY(cell.x, cell.y, z, oy),
+  }))
+  const cx = centers.reduce((sum, p) => sum + p.x, 0) / centers.length
+  const cy = centers.reduce((sum, p) => sum + p.y, 0) / centers.length
+  const podR = hexS * 0.33
+
+  ctx.save()
+  ctx.globalAlpha = alpha
+
+  if (type === 'MINE') {
+    // Mining facility: one large hex module + one smaller cylinder module.
+    const primary = centers[0]
+    const secondary = centers[1] || centers[0]
+    const vx = secondary.x - primary.x
+    const vy = secondary.y - primary.y
+    const len = Math.hypot(vx, vy) || 1
+    const nx = vx / len
+    const ny = vy / len
+    const hexPodR = hexS * 0.72
+    const hexInnerR = hexPodR * 0.64
+    const cylR = hexS * 0.5
+    const cylInnerR = cylR * 0.62
+
+    // Bright connector between both modules.
+    ctx.strokeStyle = '#ecf2f9'
+    ctx.lineWidth = Math.max(2.8, hexS * 0.18)
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(primary.x, primary.y)
+    ctx.lineTo(secondary.x, secondary.y)
+    ctx.stroke()
+
+    // Large hex module on primary tile.
+    ctx.fillStyle = '#ecf2f9'
+    hexPath(ctx, primary.x, primary.y, hexPodR)
+    ctx.fill()
+    ctx.strokeStyle = '#8fa2b6'
+    ctx.lineWidth = Math.max(1.1, hexS * 0.045)
+    ctx.stroke()
+    ctx.fillStyle = '#d8e2ed'
+    hexPath(ctx, primary.x, primary.y, hexInnerR)
+    ctx.fill()
+    ctx.fillStyle = colors.accent
+    ctx.beginPath()
+    ctx.arc(primary.x, primary.y, hexPodR * 0.3, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Smaller cylinder module on secondary tile.
+    ctx.fillStyle = '#ecf2f9'
+    ctx.beginPath()
+    ctx.arc(secondary.x, secondary.y, cylR, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#8fa2b6'
+    ctx.lineWidth = Math.max(1, hexS * 0.04)
+    ctx.stroke()
+    ctx.fillStyle = '#d8e2ed'
+    ctx.beginPath()
+    ctx.arc(secondary.x, secondary.y, cylInnerR, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = colors.accent
+    ctx.beginPath()
+    ctx.arc(secondary.x, secondary.y, cylR * 0.3, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Dark square centered on top of the cylinder module.
+    const drillSize = cylR * 0.56
+    ctx.fillStyle = '#475569'
+    ctx.fillRect(
+      secondary.x - drillSize / 2,
+      secondary.y - drillSize / 2,
+      drillSize,
+      drillSize,
+    )
+
+    ctx.restore()
+    return true
+  }
+
+  if (type === 'HABITAT') {
+    ctx.strokeStyle = '#c5d3e3'
+    ctx.lineWidth = Math.max(2, hexS * 0.09)
+    for (let i = 1; i < centers.length; i++) {
+      ctx.beginPath()
+      ctx.moveTo(centers[0].x, centers[0].y)
+      ctx.lineTo(centers[i].x, centers[i].y)
+      ctx.stroke()
+    }
+    for (const c of centers) {
+      ctx.fillStyle = '#ecf2f9'
+      ctx.fillRect(c.x - podR * 0.9, c.y - podR * 0.46, podR * 1.8, podR * 0.92)
+      ctx.beginPath()
+      ctx.ellipse(
+        c.x,
+        c.y - podR * 0.46,
+        podR * 0.9,
+        podR * 0.28,
+        0,
+        Math.PI,
+        0,
+      )
+      ctx.fill()
+      ctx.beginPath()
+      ctx.ellipse(
+        c.x,
+        c.y + podR * 0.46,
+        podR * 0.9,
+        podR * 0.28,
+        0,
+        0,
+        Math.PI,
+      )
+      ctx.fill()
+      ctx.strokeStyle = '#8fa2b6'
+      ctx.lineWidth = 1
+      ctx.stroke()
+      ctx.fillStyle = colors.accent
+      ctx.fillRect(
+        c.x - podR * 0.25,
+        c.y - podR * 0.12,
+        podR * 0.5,
+        podR * 0.24,
+      )
+    }
+    ctx.restore()
+    return true
+  }
+
+  if (type === 'RECYCLING_CENTER') {
+    const recPodR = hexS * 0.58
+    ctx.strokeStyle = '#ecf2f9'
+    ctx.lineWidth = Math.max(3, hexS * 0.2)
+    ctx.beginPath()
+    for (let i = 0; i < centers.length; i++) {
+      const a = centers[i]
+      const b = centers[(i + 1) % centers.length]
+      if (i === 0) ctx.moveTo(a.x, a.y)
+      ctx.lineTo(b.x, b.y)
+    }
+    ctx.closePath()
+    ctx.stroke()
+
+    for (const c of centers) {
+      ctx.fillStyle = '#ecf2f9'
+      ctx.beginPath()
+      ctx.arc(c.x, c.y, recPodR, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#8fa2b6'
+      ctx.lineWidth = Math.max(1, hexS * 0.035)
+      ctx.stroke()
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(c.x, c.y, recPodR * 0.28, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    ctx.fillStyle = '#e2e8f0'
+    ctx.beginPath()
+    ctx.arc(cx, cy, podR * 0.38, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#8fa2b6'
+    ctx.stroke()
+    ctx.restore()
+    return true
+  }
+
+  if (type === 'MDV_LANDING_SITE') {
+    for (const c of centers) {
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.7)'
+      ctx.beginPath()
+      ctx.arc(c.x, c.y, podR * 0.62, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.strokeStyle = '#cbd5e1'
+    ctx.lineWidth = Math.max(2, hexS * 0.08)
+    ctx.beginPath()
+    for (let i = 0; i < centers.length; i++) {
+      const c = centers[i]
+      if (i === 0) ctx.moveTo(c.x, c.y)
+      else ctx.lineTo(c.x, c.y)
+    }
+    ctx.stroke()
+
+    ctx.fillStyle = '#ecf2f9'
+    ctx.beginPath()
+    ctx.moveTo(cx, cy - podR * 1.2)
+    ctx.lineTo(cx + podR * 0.65, cy + podR * 0.55)
+    ctx.lineTo(cx - podR * 0.65, cy + podR * 0.55)
+    ctx.closePath()
+    ctx.fill()
+    ctx.strokeStyle = '#8fa2b6'
+    ctx.lineWidth = 1
+    ctx.stroke()
+
+    ctx.fillStyle = '#cbe2fb'
+    ctx.beginPath()
+    ctx.arc(cx, cy - podR * 0.75, podR * 0.24, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+    return true
+  }
+
+  ctx.restore()
+  return false
 }
