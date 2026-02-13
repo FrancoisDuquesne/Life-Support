@@ -792,10 +792,27 @@ export function processTick(state, terrainMap, revealedTiles) {
   // Hard fail when no humans remain.
   if (state.colonists && state.colonists.length === 0) {
     state.alive = false
-    state.collapseReason = createCollapseReason(
-      'All colonists have died.',
-      'Stabilize food, water, and oxygen before expanding your colony footprint.',
-    )
+    if (state.resources.oxygen <= 0) {
+      state.collapseReason = createCollapseReason(
+        'All colonists died from oxygen loss.',
+        'Prioritize Oxygen Generators and keep a buffer of water + energy to avoid chain failures.',
+      )
+    } else if (state.resources.water <= 0) {
+      state.collapseReason = createCollapseReason(
+        'All colonists died from dehydration.',
+        'Secure Water Extractors early and keep backup energy so extraction never halts.',
+      )
+    } else if (state.resources.food <= 0) {
+      state.collapseReason = createCollapseReason(
+        'All colonists starved to death.',
+        'Build Hydroponic Farms early and ensure steady water + energy supply for them.',
+      )
+    } else {
+      state.collapseReason = createCollapseReason(
+        'All colonists have died.',
+        'Stabilize food, water, and oxygen before expanding your colony footprint.',
+      )
+    }
     events += `COLONY COLLAPSED: ${state.collapseReason.cause} `
     return {
       tick: state.tickCount,
@@ -824,12 +841,8 @@ export function processTick(state, terrainMap, revealedTiles) {
   }
 
   if (state.resources.oxygen <= 0) {
-    state.resources.oxygen = Math.max(0, state.resources.oxygen)
-    if (state.colonists && state.colonists.length > 0) {
-      events +=
-        'CRITICAL: Oxygen depleted — all colonists suffocated instantly. '
-      state.colonists = []
-    }
+    state.resources.oxygen = 0
+    events += 'CRITICAL: Oxygen depleted — colonists are suffocating! '
   }
 
   if (state.resources.water <= 0) {

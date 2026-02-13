@@ -1055,6 +1055,30 @@ function render() {
           rotation,
         )
       }
+
+      // Draw error tooltip pill when placement is invalid
+      if (!canBuildHere && validation.message) {
+        const pillY = metrics.cy + metrics.iconSize / 2 + 8
+        ctx.save()
+        ctx.font = `${Math.max(11, 12 * z)}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'top'
+        const text = validation.message
+        const tm = ctx.measureText(text)
+        const pillW = tm.width + 16
+        const pillH = Math.max(20, 14 * z + 8)
+        const pillX = metrics.cx - pillW / 2
+        const pillR = pillH / 2
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)'
+        ctx.beginPath()
+        ctx.roundRect(pillX, pillY, pillW, pillH, pillR)
+        ctx.fill()
+
+        ctx.fillStyle = '#fca5a5'
+        ctx.fillText(text, metrics.cx, pillY + (pillH - 14 * z) / 2)
+        ctx.restore()
+      }
     }
   }
 
