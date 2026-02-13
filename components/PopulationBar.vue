@@ -106,6 +106,14 @@ function roleClasses(role) {
 const visibleDots = computed(() => colonists.value.slice(0, 8))
 const overflowCount = computed(() => Math.max(0, colonists.value.length - 8))
 
+const ROLE_EFFECTS = {
+  ENGINEER: '+10%/colonist to Solar Panel, RTG, Repair Station',
+  BOTANIST: '+10%/colonist to Farm, O2 Generator',
+  GEOLOGIST: '+10%/colonist to Mine, Water Extractor',
+  MEDIC: '+0.5 HP/tick healing to all colonists',
+  GENERAL: '+3%/colonist to all building production',
+}
+
 const roleSummary = computed(() => {
   const counts = {}
   for (const c of colonists.value) {
@@ -116,6 +124,7 @@ const roleSummary = computed(() => {
     count,
     name: ROLES[role] ? ROLES[role].name : role,
     badge: roleClasses(role).badge,
+    effect: ROLE_EFFECTS[role] || '',
   }))
 })
 
@@ -356,14 +365,20 @@ defineExpose({ openDetail })
       <!-- Role bonus summary -->
       <div class="border-default/70 mt-3 border-t pt-2">
         <USeparator label="Role Bonuses" class="mb-2" />
-        <div class="flex flex-wrap gap-1.5">
-          <UBadge
+        <div class="flex flex-col gap-1.5">
+          <div
             v-for="rs in roleSummary"
             :key="rs.role"
-            variant="subtle"
-            :color="rs.badge"
-            :label="`${rs.count}x ${rs.name}`"
-          />
+            class="flex items-start gap-2"
+          >
+            <UBadge
+              variant="subtle"
+              :color="rs.badge"
+              :label="`${rs.count}x ${rs.name}`"
+              class="shrink-0"
+            />
+            <span class="text-muted text-xs leading-snug">{{ rs.effect }}</span>
+          </div>
         </div>
       </div>
     </template>

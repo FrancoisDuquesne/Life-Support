@@ -728,11 +728,21 @@ function render() {
 
   // Layer 2a: Build-range overlay when a building is selected
   const buildable = props.buildableCells
-  if (
-    props.interaction.selectedBuilding.value &&
-    buildable &&
-    buildable.size > 0
-  ) {
+  const selBuilding = props.interaction.selectedBuilding.value
+  if (selBuilding && buildable && buildable.size > 0) {
+    // Compute pipeline-adjacent cells for non-pipeline buildings
+    const isPipelineSelected = selBuilding === 'PIPELINE'
+    let pipelineAdj = null
+    if (!isPipelineSelected && props.state && props.state.placedBuildings) {
+      pipelineAdj = new Set()
+      for (const pb of props.state.placedBuildings) {
+        if (pb.type !== 'PIPELINE') continue
+        for (const [nx, ny] of hexNeighbors(pb.x, pb.y)) {
+          pipelineAdj.add(nx + ',' + ny)
+        }
+      }
+    }
+
     for (let row = minRow; row <= maxRow; row++) {
       for (let col = minCol; col <= maxCol; col++) {
         const key = col + ',' + row
@@ -740,16 +750,29 @@ function render() {
         const cx = hexScreenX(col, z, ox)
         const cy = hexScreenY(col, row, z, oy)
         const isBuildableCell = buildable.has(key)
-        ctx.fillStyle = isBuildableCell
-          ? 'rgba(56, 189, 248, 0.2)'
-          : 'rgba(15, 23, 42, 0.08)'
-        hexPath(ctx, cx, cy, hexS)
-        ctx.fill()
-        if (isBuildableCell) {
-          ctx.strokeStyle = 'rgba(125, 211, 252, 0.42)'
+        const isNearPipeline = pipelineAdj && pipelineAdj.has(key)
+
+        if (isBuildableCell && isNearPipeline) {
+          // Bright highlight: valid placement spot (adjacent to pipeline)
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.18)'
+          hexPath(ctx, cx, cy, hexS)
+          ctx.fill()
+          ctx.strokeStyle = 'rgba(74, 222, 128, 0.50)'
+          ctx.lineWidth = Math.max(0.8, hexS * 0.04)
+          hexPath(ctx, cx, cy, hexS * 0.96)
+          ctx.stroke()
+        } else if (isBuildableCell) {
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.12)'
+          hexPath(ctx, cx, cy, hexS)
+          ctx.fill()
+          ctx.strokeStyle = 'rgba(125, 211, 252, 0.25)'
           ctx.lineWidth = Math.max(0.8, hexS * 0.03)
           hexPath(ctx, cx, cy, hexS * 0.96)
           ctx.stroke()
+        } else {
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.08)'
+          hexPath(ctx, cx, cy, hexS)
+          ctx.fill()
         }
       }
     }

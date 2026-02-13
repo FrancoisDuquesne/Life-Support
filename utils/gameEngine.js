@@ -38,7 +38,7 @@ export const START_RESOURCES = {
 // HP repair pool distributed evenly across all buildings per repair station
 const REPAIR_POOL_PER_STATION = 5
 // HP degradation per tick per building
-const DEGRADATION_PER_TICK = 0.5
+const DEGRADATION_PER_TICK = 0.25
 // Waste generated per active building per tick
 const WASTE_PER_BUILDING = 0.3
 // Waste generated per colonist per tick
