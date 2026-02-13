@@ -96,12 +96,15 @@ watch(
   { deep: true },
 )
 
+const DEPLETION_WARN_TICKS = 5
+
 const resources = computed(() => {
   return RESOURCE_KEYS.map((key) => {
     const val =
       (props.state && props.state.resources && props.state.resources[key]) || 0
     const delta = (props.deltas && props.deltas[key]) || 0
-    return { key, val, delta }
+    const ticksLeft = delta < 0 ? Math.ceil(val / Math.abs(delta)) : null
+    return { key, val, delta, ticksLeft }
   })
 })
 
@@ -161,6 +164,12 @@ function formatSignedDelta(value) {
         >
           {{ formatSignedDelta(r.delta) }}
         </span>
+        <span
+          v-if="r.ticksLeft !== null && r.ticksLeft <= DEPLETION_WARN_TICKS"
+          class="text-error text-[10px] font-bold tabular-nums"
+        >
+          {{ r.ticksLeft <= 0 ? '!' : `${r.ticksLeft}t` }}
+        </span>
       </div>
     </div>
   </template>
@@ -196,18 +205,26 @@ function formatSignedDelta(value) {
             </span>
           </div>
           <div class="flex items-center justify-between gap-2">
-            <span
-              :class="[
-                'text-xs font-bold whitespace-nowrap tabular-nums',
-                r.delta > 0
-                  ? 'text-success'
-                  : r.delta < 0
-                    ? 'text-error'
-                    : 'text-muted',
-              ]"
-            >
-              {{ formatSignedDelta(r.delta) }}/t
-            </span>
+            <div class="flex items-center gap-1.5">
+              <span
+                :class="[
+                  'text-xs font-bold whitespace-nowrap tabular-nums',
+                  r.delta > 0
+                    ? 'text-success'
+                    : r.delta < 0
+                      ? 'text-error'
+                      : 'text-muted',
+                ]"
+              >
+                {{ formatSignedDelta(r.delta) }}/t
+              </span>
+              <span
+                v-if="r.ticksLeft !== null && r.ticksLeft <= DEPLETION_WARN_TICKS"
+                class="text-error bg-error/15 rounded px-1 text-[10px] font-bold tabular-nums"
+              >
+                {{ r.ticksLeft <= 0 ? 'EMPTY' : `${r.ticksLeft}t left` }}
+              </span>
+            </div>
             <canvas
               :ref="(el) => setSparkRef(r.key, el)"
               class="block h-4 w-20 shrink-0 opacity-90"
