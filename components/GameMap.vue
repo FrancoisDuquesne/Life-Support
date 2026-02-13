@@ -29,6 +29,7 @@ const props = defineProps({
   gridHeight: Number,
   onTileClick: Function,
   onContextMenu: Function,
+  onLongPress: Function,
   revealedTiles: Object,
   terrainMap: Array,
   activeEvents: Array,
@@ -1113,6 +1114,12 @@ function render() {
   }
 }
 
+function handleLongPress(gx, gy, screenX, screenY) {
+  if (props.onLongPress) {
+    props.onLongPress(gx, gy, screenX, screenY)
+  }
+}
+
 function handleContextMenu(e) {
   e.preventDefault()
   e.stopPropagation()
@@ -1191,7 +1198,7 @@ onUnmounted(() => {
     @mouseup.prevent="interaction.onPointerUp(canvasRef, $event, onTileClick)"
     @mouseleave.prevent="interaction.onPointerUp(canvasRef, $event, null)"
     @wheel.prevent="interaction.onWheel(canvasRef, $event)"
-    @touchstart.prevent="interaction.onPointerDown(canvasRef, $event)"
+    @touchstart.prevent="interaction.onPointerDown(canvasRef, $event, handleLongPress)"
     @touchmove.prevent="interaction.onPointerMove(canvasRef, $event)"
     @touchend.prevent="interaction.onPointerUp(canvasRef, $event, onTileClick)"
     @contextmenu.prevent="handleContextMenu"

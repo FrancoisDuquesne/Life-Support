@@ -133,6 +133,8 @@ const contextMenu = ref({
   building: null,
 })
 
+const radialMenu = ref({ open: false, x: 0, y: 0 })
+
 const collapseSummary = computed(() => {
   const reason = colony.state.value && colony.state.value.collapseReason
   if (reason && reason.cause) return reason.cause
@@ -404,15 +406,23 @@ function onContextMenu(gx, gy, screenX, screenY) {
       : b.x === gx && b.y === gy,
   )
 
-  if (!building) return // No building at this location
-
-  // Open context menu
-  contextMenu.value = {
-    open: true,
-    x: screenX,
-    y: screenY,
-    building: building,
+  if (building) {
+    // Open upgrade/demolish context menu for existing buildings
+    contextMenu.value = {
+      open: true,
+      x: screenX,
+      y: screenY,
+      building: building,
+    }
+  } else {
+    // Open radial build menu for empty tiles
+    radialMenu.value = { open: true, x: screenX, y: screenY }
   }
+}
+
+function onRadialSelect(buildingId) {
+  interaction.selectBuilding(buildingId)
+  radialMenu.value.open = false
 }
 
 function onSelectBuilding(id) {
@@ -466,7 +476,11 @@ function handleKeyDown(e) {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
 
   if (e.key === 'Escape') {
-    interaction.clearSelection()
+    if (radialMenu.value.open) {
+      radialMenu.value.open = false
+    } else {
+      interaction.clearSelection()
+    }
   } else if (e.key === ' ' || e.key === 'Space') {
     e.preventDefault()
     colony.manualTick()
@@ -640,6 +654,7 @@ onUnmounted(() => {
           :grid-height="colony.gridHeight.value"
           :on-tile-click="onTileClick"
           :on-context-menu="onContextMenu"
+          :on-long-press="onContextMenu"
           :revealed-tiles="colony.revealedTiles.value"
           :terrain-map="colony.terrainMap.value"
           :active-events="colony.activeEvents.value"
@@ -933,6 +948,19 @@ onUnmounted(() => {
       :step="tutorialStep"
       @skip="dismissTutorial"
       @next="onTutorialNext"
+    />
+
+    <!-- Radial Build Menu -->
+    <RadialBuildMenu
+      :open="radialMenu.open"
+      :x="radialMenu.x"
+      :y="radialMenu.y"
+      :buildings="colony.buildingsInfo.value"
+      :state="colony.state.value"
+      :deltas="colony.resourceDeltas.value"
+      :can-afford="colony.canAfford"
+      @update:open="radialMenu.open = $event"
+      @select="onRadialSelect"
     />
 
     <!-- Building Context Menu -->

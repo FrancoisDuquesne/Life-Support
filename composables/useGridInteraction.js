@@ -15,6 +15,10 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
   let pinchStartZoom = 1
   let activeTouches = []
 
+  // Long-press state (mobile radial menu)
+  let longPressTimer = null
+  let longPressFired = false
+
   function getCanvasCoords(canvas, e) {
     const rect = canvas.getBoundingClientRect()
     const touch = e.touches ? e.touches[0] : e
@@ -42,26 +46,54 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
     }
   }
 
-  function onPointerDown(canvas, e) {
+  function cancelLongPress() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer)
+      longPressTimer = null
+    }
+  }
+
+  function onPointerDown(canvas, e, onLongPress) {
     if (e.touches && e.touches.length === 2) {
       pinchStartDist = getTouchDist(e)
       pinchStartZoom = camera.zoom.value
+      cancelLongPress()
       return
     }
     const coords = getCanvasCoords(canvas, e)
     pointerDown = true
     isDragging = false
+    longPressFired = false
     dragStartX = coords.x
     dragStartY = coords.y
     lastPointerX = coords.x
     lastPointerY = coords.y
+
+    // Start long-press timer for touch events
+    cancelLongPress()
+    if (e.touches && e.touches.length === 1 && onLongPress) {
+      const touch = e.touches[0]
+      const clientX = touch.clientX
+      const clientY = touch.clientY
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null
+        longPressFired = true
+        const grid = camera.screenToGrid(coords.x, coords.y)
+        const gw = gridWidth.value || 32
+        const gh = gridHeight.value || 32
+        if (grid.gx >= 0 && grid.gx < gw && grid.gy >= 0 && grid.gy < gh) {
+          onLongPress(grid.gx, grid.gy, clientX, clientY)
+        }
+      }, 500)
+    }
   }
 
   function onPointerMove(canvas, e) {
     const coords = getCanvasCoords(canvas, e)
 
-    // Pinch zoom
+    // Pinch zoom — cancel long-press
     if (e.touches && e.touches.length === 2) {
+      cancelLongPress()
       const dist = getTouchDist(e)
       if (pinchStartDist > 0) {
         const center = getTouchCenter(canvas, e)
@@ -102,6 +134,7 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
           Math.abs(totalDy) > DRAG_THRESHOLD)
       ) {
         isDragging = true
+        cancelLongPress()
       }
 
       if (isDragging) {
@@ -114,6 +147,7 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
   }
 
   function onPointerUp(canvas, e, onTileClick) {
+    cancelLongPress()
     if (e.touches) {
       if (e.touches.length < 2) {
         pinchStartDist = 0
@@ -122,7 +156,7 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
     if (!pointerDown) return
     pointerDown = false
 
-    if (!isDragging) {
+    if (!isDragging && !longPressFired) {
       const grid = camera.screenToGrid(dragStartX, dragStartY)
       const gw = gridWidth.value || 32
       const gh = gridHeight.value || 32
@@ -131,6 +165,7 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
       }
     }
     isDragging = false
+    longPressFired = false
   }
 
   function onWheel(canvas, e) {
