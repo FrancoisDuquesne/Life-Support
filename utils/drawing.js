@@ -639,38 +639,58 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
     }
 
     case 'MINE': {
-      const lobeR = r * 0.72
+      // Compact version of the footprint design: hex pod + cylinder with drill + connector
       const off = r * 0.52
-      ctx.fillStyle = hull
+      const hexPodR = r * 0.72
+      const hexInnerR = hexPodR * 0.64
+      const cylR = r * 0.5
+      const cylInnerR = cylR * 0.62
+
+      // Connector beam between modules
+      ctx.strokeStyle = hull
+      ctx.lineWidth = Math.max(2.4, r * 0.18)
+      ctx.lineCap = 'round'
       ctx.beginPath()
-      ctx.arc(cx - off, cy, lobeR, 0, Math.PI * 2)
-      ctx.arc(cx + off, cy, lobeR, 0, Math.PI * 2)
+      ctx.moveTo(cx - off, cy)
+      ctx.lineTo(cx + off, cy)
+      ctx.stroke()
+
+      // Left hex pod
+      ctx.fillStyle = hull
+      hexPath(ctx, cx - off, cy, hexPodR)
       ctx.fill()
       ctx.strokeStyle = hullLine
-      ctx.lineWidth = 1.2
-      ctx.beginPath()
-      ctx.arc(cx - off, cy, lobeR, 0, Math.PI * 2)
-      ctx.arc(cx + off, cy, lobeR, 0, Math.PI * 2)
+      ctx.lineWidth = 1.1
       ctx.stroke()
       ctx.fillStyle = '#d8e2ed'
-      ctx.beginPath()
-      ctx.ellipse(cx, cy, lobeR * 0.5, lobeR * 0.32, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      ctx.fillStyle = '#475569'
-      ctx.beginPath()
-      ctx.moveTo(cx - off * 0.88, cy + lobeR * 0.16)
-      ctx.lineTo(cx + off * 0.35, cy - lobeR * 0.08)
-      ctx.lineTo(cx + off * 0.35, cy + lobeR * 0.38)
-      ctx.closePath()
+      hexPath(ctx, cx - off, cy, hexInnerR)
       ctx.fill()
       ctx.fillStyle = colors.accent
       ctx.beginPath()
-      ctx.moveTo(cx + off * 0.35, cy - lobeR * 0.08)
-      ctx.lineTo(cx + off * 0.8, cy + lobeR * 0.15)
-      ctx.lineTo(cx + off * 0.35, cy + lobeR * 0.38)
-      ctx.closePath()
+      ctx.arc(cx - off, cy, hexPodR * 0.3, 0, Math.PI * 2)
       ctx.fill()
+
+      // Right cylinder module
+      ctx.fillStyle = hull
+      ctx.beginPath()
+      ctx.arc(cx + off, cy, cylR, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1.1
+      ctx.stroke()
+      ctx.fillStyle = '#d8e2ed'
+      ctx.beginPath()
+      ctx.arc(cx + off, cy, cylInnerR, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(cx + off, cy, cylR * 0.3, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Drill square on cylinder
+      const drillSize = cylR * 0.56
+      ctx.fillStyle = '#475569'
+      ctx.fillRect(cx + off - drillSize / 2, cy - drillSize / 2, drillSize, drillSize)
       break
     }
 
@@ -761,8 +781,8 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
         [cx + orbit * 0.86, cy + orbit * 0.5],
         [cx - orbit * 0.86, cy + orbit * 0.5],
       ]
-      ctx.strokeStyle = hullLine
-      ctx.lineWidth = 5
+      ctx.strokeStyle = hull
+      ctx.lineWidth = Math.max(3, r * 0.16)
       ctx.beginPath()
       ctx.moveTo(points[0][0], points[0][1])
       ctx.lineTo(points[1][0], points[1][1])
@@ -779,9 +799,17 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
         ctx.stroke()
         ctx.fillStyle = colors.accent
         ctx.beginPath()
-        ctx.arc(px, py, podR * 0.35, 0, Math.PI * 2)
+        ctx.arc(px, py, podR * 0.28, 0, Math.PI * 2)
         ctx.fill()
       }
+      // Central hub dot (matches footprint version)
+      ctx.fillStyle = '#e2e8f0'
+      ctx.beginPath()
+      ctx.arc(cx, cy, podR * 0.32, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1
+      ctx.stroke()
       break
     }
 
