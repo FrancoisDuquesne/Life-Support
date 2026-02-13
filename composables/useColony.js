@@ -438,6 +438,14 @@ export function useColony() {
     persistDevModePreference(devModeEnabled.value)
   }
 
+  function pauseGame() {
+    stopTickTimer()
+  }
+
+  function resumeGame() {
+    startTickTimer()
+  }
+
   onUnmounted(stopTickTimer)
 
   return {
@@ -466,5 +474,7 @@ export function useColony() {
     manualTick,
     setSpeed,
     setDevModeEnabled,
+    pauseGame,
+    resumeGame,
   }
 }

@@ -9,9 +9,13 @@ const props = defineProps({
   devModeEnabled: Boolean,
   colorblindMode: Boolean,
 })
-const emit = defineEmits(['update:devModeEnabled', 'update:colorblindMode'])
+const emit = defineEmits(['update:devModeEnabled', 'update:colorblindMode', 'settingsOpen', 'settingsClose'])
 
 const showSettings = ref(false)
+
+watch(showSettings, (open) => {
+  emit(open ? 'settingsOpen' : 'settingsClose')
+})
 const colorMode = useColorMode()
 
 const SPEEDS = [

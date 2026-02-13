@@ -135,6 +135,10 @@ const contextMenu = ref({
 
 const radialMenu = ref({ open: false, x: 0, y: 0 })
 
+// Pause game while settings menu is open
+function onSettingsOpen() { colony.pauseGame() }
+function onSettingsClose() { colony.resumeGame() }
+
 const collapseSummary = computed(() => {
   const reason = colony.state.value && colony.state.value.collapseReason
   if (reason && reason.cause) return reason.cause
@@ -456,6 +460,23 @@ try {
   colorblindMode.value = localStorage.getItem(COLORBLIND_STORAGE_KEY) === '1'
 } catch (_) {}
 
+// Sidebar auto-retract state
+const SIDEBAR_PIN_KEY = 'life-support-sidebar-pinned'
+const sidebarPinned = ref(true)
+const sidebarHovered = ref(false)
+
+try {
+  const stored = localStorage.getItem(SIDEBAR_PIN_KEY)
+  if (stored !== null) sidebarPinned.value = stored === '1'
+} catch (_) {}
+
+const sidebarVisible = computed(() => sidebarPinned.value || sidebarHovered.value)
+
+function toggleSidebarPin() {
+  sidebarPinned.value = !sidebarPinned.value
+  try { localStorage.setItem(SIDEBAR_PIN_KEY, sidebarPinned.value ? '1' : '0') } catch (_) {}
+}
+
 watch(colorblindMode, (enabled) => {
   document.documentElement.classList.toggle('colorblind', enabled)
   try { localStorage.setItem(COLORBLIND_STORAGE_KEY, enabled ? '1' : '0') } catch (_) {}
@@ -518,6 +539,8 @@ onUnmounted(() => {
       v-model:dev-mode-enabled="devModeModel"
       :colorblind-mode="colorblindMode"
       @update:colorblind-mode="colorblindMode = $event"
+      @settings-open="onSettingsOpen"
+      @settings-close="onSettingsClose"
     />
     <div class="relative min-h-0 flex-1">
       <!-- Desktop left sidebar: resources + population + analytics -->
@@ -795,10 +818,29 @@ onUnmounted(() => {
         >
         </UAlert>
       </Transition>
+      <!-- Hover trigger strip (visible only when sidebar is hidden) -->
+      <div
+        v-if="!sidebarVisible"
+        class="absolute top-0 right-0 bottom-0 z-10 w-2 max-md:hidden"
+        @mouseenter="sidebarHovered = true"
+      />
+
       <!-- Desktop right sidebar: build panel + event log -->
       <div
-        class="glass-panel border-default/70 absolute top-0 right-0 bottom-0 z-10 flex w-sm flex-col overflow-hidden border-l max-md:hidden"
+        class="glass-panel border-default/70 absolute top-0 right-0 bottom-0 z-10 flex w-sm flex-col overflow-hidden border-l transition-transform duration-300 ease-out max-md:hidden"
+        :class="sidebarVisible ? 'translate-x-0' : 'translate-x-full'"
+        @mouseenter="sidebarHovered = true"
+        @mouseleave="sidebarHovered = false"
       >
+        <div class="flex items-center justify-end px-2 pt-1">
+          <UButton
+            :icon="sidebarPinned ? 'i-heroicons-lock-closed' : 'i-heroicons-lock-open'"
+            :color="sidebarPinned ? 'primary' : 'neutral'"
+            variant="ghost"
+            size="xs"
+            @click="toggleSidebarPin"
+          />
+        </div>
         <div class="scrollbar-dark min-h-0 flex-1 overflow-y-auto">
           <BuildPanel
             :buildings="colony.buildingsInfo.value"

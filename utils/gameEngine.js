@@ -318,10 +318,13 @@ function computePipelineNetworks(state) {
   return networks
 }
 
-function isAdjacentToPipeline(state, x, y) {
-  return (state.placedBuildings || []).some(
-    (pb) => pb.type === 'PIPELINE' && hexDistance(pb.x, pb.y, x, y) <= 1,
-  )
+function isAdjacentToInfrastructure(state, x, y) {
+  return (state.placedBuildings || []).some((pb) => {
+    if (pb.type !== 'PIPELINE' && pb.type !== 'MDV_LANDING_SITE') return false
+    return getBuildingCells(pb).some(
+      (cell) => hexDistance(cell.x, cell.y, x, y) <= 1,
+    )
+  })
 }
 
 function isAdjacentToExistingStructure(state, x, y) {
@@ -1041,7 +1044,7 @@ export function validateBuildPlacement(
     }
   }
 
-  if (bType.id !== 'PIPELINE' && !isAdjacentToPipeline(state, x, y)) {
+  if (bType.id !== 'PIPELINE' && !isAdjacentToInfrastructure(state, x, y)) {
     return {
       ok: false,
       message: 'Buildings must be placed adjacent to a pipeline',
