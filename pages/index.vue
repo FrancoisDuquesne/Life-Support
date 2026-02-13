@@ -3,6 +3,12 @@ import { getTerrainAt, getTerrainBonusText } from '~/utils/terrain'
 import { GRID_WIDTH, WASTE_OVERFLOW_PENALTY } from '~/utils/gameEngine'
 import { formatSignedFixed, roundTo } from '~/utils/formatting'
 import { ROLES } from '~/utils/colonistEngine'
+import {
+  MILESTONES,
+  loadUnlockedMilestones,
+  saveUnlockedMilestones,
+  checkMilestones,
+} from '~/utils/milestones'
 
 const colony = useColony()
 const camera = useCamera(colony.gridWidth, colony.gridHeight)
@@ -91,6 +97,30 @@ watch(
     }
   },
   { deep: true },
+)
+
+// Milestones
+const unlockedMilestoneIds = ref(loadUnlockedMilestones())
+const showMilestones = ref(false)
+const milestoneToast = ref(null)
+let milestoneToastTimer = null
+
+watch(
+  () => colony.state.value?.tickCount,
+  () => {
+    const s = colony.state.value
+    if (!s || !s.alive) return
+    const newlyUnlocked = checkMilestones(s, colony.resourceDeltas.value, unlockedMilestoneIds.value)
+    if (newlyUnlocked.length > 0) {
+      for (const m of newlyUnlocked) {
+        unlockedMilestoneIds.value.push(m.id)
+      }
+      saveUnlockedMilestones(unlockedMilestoneIds.value)
+      milestoneToast.value = newlyUnlocked[newlyUnlocked.length - 1]
+      if (milestoneToastTimer) clearTimeout(milestoneToastTimer)
+      milestoneToastTimer = setTimeout(() => { milestoneToast.value = null }, 4000)
+    }
+  },
 )
 
 const eventToast = ref(null)
@@ -209,11 +239,24 @@ const hoverBuildingInfo = computed(() => {
     REPAIR_STATION: 'text-error',
   }
 
+  const level = building.level || 1
+  const maxLevel = 3
+  const canUpgrade = building.type !== 'MDV_LANDING_SITE' && level < maxLevel
+  const nextLevel = level + 1
+  const upgradeCost = canUpgrade
+    ? { minerals: 12 * nextLevel, energy: 5 * nextLevel }
+    : null
+
   return {
     info,
     produces,
     consumes,
     nameClass: buildingClassMap[building.type] || 'text-primary',
+    level,
+    canUpgrade,
+    upgradeCost,
+    hp: Math.round(building.hp ?? 100),
+    maxHp: building.maxHp ?? 100,
   }
 })
 
@@ -396,6 +439,18 @@ function resetFromCollapseModal() {
   colony.resetColony()
 }
 
+const COLORBLIND_STORAGE_KEY = 'life-support-colorblind'
+const colorblindMode = ref(false)
+
+try {
+  colorblindMode.value = localStorage.getItem(COLORBLIND_STORAGE_KEY) === '1'
+} catch (_) {}
+
+watch(colorblindMode, (enabled) => {
+  document.documentElement.classList.toggle('colorblind', enabled)
+  try { localStorage.setItem(COLORBLIND_STORAGE_KEY, enabled ? '1' : '0') } catch (_) {}
+}, { immediate: true })
+
 const devModeModel = computed({
   get: () => colony.devModeEnabled.value,
   set: (enabled) => {
@@ -404,8 +459,25 @@ const devModeModel = computed({
   },
 })
 
+const SPEED_KEYS = { '1': 5000, '2': 2500, '3': 1000, '4': 500 }
+
+function handleKeyDown(e) {
+  // Ignore when typing in inputs
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+
+  if (e.key === 'Escape') {
+    interaction.clearSelection()
+  } else if (e.key === ' ' || e.key === 'Space') {
+    e.preventDefault()
+    colony.manualTick()
+  } else if (SPEED_KEYS[e.key]) {
+    colony.setSpeed(SPEED_KEYS[e.key])
+  }
+}
+
 onMounted(() => {
   colony.init()
+  window.addEventListener('keydown', handleKeyDown)
   // Start tutorial for new games that haven't completed it
   if (colony.isNewGame.value) {
     try {
@@ -414,6 +486,10 @@ onMounted(() => {
       }
     } catch (_) {}
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
 })
 </script>
 <template>
@@ -426,6 +502,8 @@ onMounted(() => {
       :on-manual-tick="colony.manualTick"
       :dev-mode-allowed="colony.devModeAllowed"
       v-model:dev-mode-enabled="devModeModel"
+      :colorblind-mode="colorblindMode"
+      @update:colorblind-mode="colorblindMode = $event"
     />
     <div class="relative min-h-0 flex-1">
       <!-- Desktop left sidebar: resources + population + analytics -->
@@ -514,6 +592,14 @@ onMounted(() => {
             </p>
           </div>
         </div>
+        <UButton
+          color="neutral"
+          variant="soft"
+          size="xs"
+          block
+          :label="`Milestones (${unlockedMilestoneIds.length}/${MILESTONES.length})`"
+          @click="showMilestones = true"
+        />
       </div>
       <!-- Mobile compact resource bar -->
       <div
@@ -607,19 +693,29 @@ onMounted(() => {
             "
             class="mt-0.5 text-xs leading-tight"
           >
-            <span v-if="hoverTerrainInfo.deposit" class="text-warning">{{
-              hoverTerrainInfo.deposit.name
-            }}</span>
-            <span v-if="hoverTerrainInfo.hazard" class="text-error ml-1.5">{{
-              hoverTerrainInfo.hazard.name
-            }}</span>
+            <div v-if="hoverTerrainInfo.deposit" class="text-warning">
+              {{ hoverTerrainInfo.deposit.name }}
+              <span class="text-muted"> — +{{ Math.round((hoverTerrainInfo.deposit.multiplier - 1) * 100) }}% {{ hoverTerrainInfo.deposit.resource }} production</span>
+            </div>
+            <div v-if="hoverTerrainInfo.hazard" class="text-error">
+              {{ hoverTerrainInfo.hazard.name }}
+              <span class="text-muted"> —
+                <template v-if="hoverTerrainInfo.hazard.effect === 'cost_increase'">+{{ Math.round((hoverTerrainInfo.hazard.costMultiplier - 1) * 100) }}% mineral cost</template>
+                <template v-else-if="hoverTerrainInfo.hazard.effect === 'production_penalty'">-{{ Math.round((1 - hoverTerrainInfo.hazard.productionMultiplier) * 100) }}% production</template>
+                <template v-else-if="hoverTerrainInfo.hazard.effect === 'block_growth'">blocks pop growth</template>
+              </span>
+            </div>
           </div>
           <div
             v-if="hoverBuildingInfo"
             class="border-default/60 mt-1 border-t pt-1 text-xs leading-tight"
           >
-            <div :class="['font-semibold', hoverBuildingInfo.nameClass]">
-              {{ hoverBuildingInfo.info.name }}
+            <div class="flex items-center gap-1.5">
+              <span :class="['font-semibold', hoverBuildingInfo.nameClass]">
+                {{ hoverBuildingInfo.info.name }}
+              </span>
+              <span v-if="hoverBuildingInfo.level > 1" class="text-primary text-[10px] font-bold">L{{ hoverBuildingInfo.level }}</span>
+              <span class="text-muted text-[10px] tabular-nums">{{ hoverBuildingInfo.hp }}/{{ hoverBuildingInfo.maxHp }} HP</span>
             </div>
             <div
               v-if="
@@ -642,6 +738,11 @@ onMounted(() => {
               >
                 -{{ amount }} {{ res }}/t
               </span>
+            </div>
+            <div v-if="hoverBuildingInfo.canUpgrade" class="text-muted mt-0.5">
+              Upgrade → L{{ hoverBuildingInfo.level + 1 }}:
+              {{ hoverBuildingInfo.upgradeCost.minerals }}m + {{ hoverBuildingInfo.upgradeCost.energy }}e
+              <span class="text-primary">(right-click)</span>
             </div>
           </div>
           <div
@@ -782,6 +883,49 @@ onMounted(() => {
         </div>
       </template>
     </UModal>
+
+    <!-- Milestones Modal -->
+    <UModal v-model:open="showMilestones" title="Milestones">
+      <template #body>
+        <div class="flex flex-col gap-2">
+          <div
+            v-for="m in MILESTONES"
+            :key="m.id"
+            :class="[
+              'flex items-center gap-3 rounded-md border p-2',
+              unlockedMilestoneIds.includes(m.id)
+                ? 'border-success/50 bg-success/10'
+                : 'border-default/50 opacity-50',
+            ]"
+          >
+            <span class="text-xl">{{ m.icon }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="text-highlighted text-sm font-bold">{{ m.name }}</div>
+              <div class="text-muted text-xs">{{ m.description }}</div>
+            </div>
+            <UBadge
+              v-if="unlockedMilestoneIds.includes(m.id)"
+              color="success"
+              variant="subtle"
+              size="xs"
+              label="Unlocked"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Milestone toast -->
+    <Transition name="toast">
+      <UAlert
+        v-if="milestoneToast"
+        class="fixed top-14 left-1/2 z-50 max-w-sm -translate-x-1/2 shadow-lg"
+        color="success"
+        variant="solid"
+        :title="`${milestoneToast.icon} ${milestoneToast.name}`"
+        :description="milestoneToast.description"
+      />
+    </Transition>
 
     <!-- Tutorial Overlay -->
     <TutorialOverlay

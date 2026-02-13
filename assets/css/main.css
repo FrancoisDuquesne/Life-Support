@@ -108,6 +108,25 @@ h4 {
   background: rgba(51, 65, 85, 0.4);
 }
 
+/* Colorblind-safe palette (deuteranopia-friendly) */
+.colorblind {
+  --color-resource-energy-400: #e69f00;
+  --color-resource-energy-500: #cc8b00;
+  --color-resource-energy: var(--color-resource-energy-500);
+  --color-resource-food-400: #009e73;
+  --color-resource-food-500: #008060;
+  --color-resource-food: var(--color-resource-food-500);
+  --color-resource-water-400: #56b4e9;
+  --color-resource-water-500: #0072b2;
+  --color-resource-water: var(--color-resource-water-500);
+  --color-resource-minerals-400: #d55e00;
+  --color-resource-minerals-500: #b34b00;
+  --color-resource-minerals: var(--color-resource-minerals-500);
+  --color-resource-oxygen-400: #cc79a7;
+  --color-resource-oxygen-500: #b35c8f;
+  --color-resource-oxygen: var(--color-resource-oxygen-500);
+}
+
 /* Loading state */
 #__nuxt:empty {
   display: flex;

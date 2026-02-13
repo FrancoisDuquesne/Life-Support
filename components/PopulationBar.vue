@@ -128,6 +128,20 @@ const roleSummary = computed(() => {
   }))
 })
 
+const growthBlockers = computed(() => {
+  const s = props.state
+  if (!s || !s.alive) return []
+  const blockers = []
+  const res = s.resources || {}
+  if ((s.population || 0) >= (s.populationCapacity || 10)) blockers.push('At capacity')
+  if ((res.food || 0) <= 20) blockers.push('Food ≤ 20')
+  if ((res.water || 0) <= 20) blockers.push('Water ≤ 20')
+  if ((res.oxygen || 0) <= 10) blockers.push('Oxygen ≤ 10')
+  if ((s.waste || 0) > (s.wasteCapacity || 50)) blockers.push('Waste overflow')
+  if ((s.avgMorale || 100) <= 40) blockers.push('Low morale')
+  return blockers
+})
+
 const statBadgeVariant = computed(() => (props.embedded ? 'solid' : 'subtle'))
 
 function openDetail() {
@@ -218,6 +232,14 @@ defineExpose({ openDetail })
         class="tabular-nums"
         :label="`MRL ${avgMorale}`"
       />
+    </div>
+    <!-- Growth blockers -->
+    <div
+      v-if="growthBlockers.length > 0"
+      class="mt-1 text-[10px] leading-tight"
+    >
+      <span class="text-warning font-medium">Growth blocked:</span>
+      <span class="text-muted"> {{ growthBlockers.join(', ') }}</span>
     </div>
     <!-- Colonist dots -->
     <div

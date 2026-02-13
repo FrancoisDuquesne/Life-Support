@@ -698,25 +698,47 @@ export function processTick(state, terrainMap, revealedTiles) {
     events += msg + ' '
   }
 
+  // 1b. Apply pending meteor from previous tick's early warning
+  if (state.pendingMeteor) {
+    const meteorEvent = state.pendingMeteor
+    state.pendingMeteor = null
+    state.activeEvents.push(meteorEvent)
+    const eventMsg = applyEventStart(state, meteorEvent, revealedTiles)
+    if (eventMsg) events += eventMsg + ' '
+    if (state.colonists && state.colonists.length > 0) {
+      const colonistMsgs = applyEventToColonists(state, meteorEvent.type)
+      for (const msg of colonistMsgs) events += msg + ' '
+      if (meteorEvent.data.buildingDestroyed) {
+        applyBuildingLostPenalty(state)
+      }
+    }
+  }
+
   // 2. Roll for random events + apply colonist effects
   const newEvent = rollRandomEvent(state, revealedTiles)
   if (newEvent) {
-    state.activeEvents.push(newEvent)
-    const eventMsg = applyEventStart(state, newEvent, revealedTiles)
-    if (eventMsg) events += eventMsg + ' '
+    // Meteor strikes get a 1-tick early warning
+    if (newEvent.type === 'METEOR_STRIKE') {
+      state.pendingMeteor = newEvent
+      events += 'WARNING: Incoming meteor detected! Impact next tick. '
+    } else {
+      state.activeEvents.push(newEvent)
+      const eventMsg = applyEventStart(state, newEvent, revealedTiles)
+      if (eventMsg) events += eventMsg + ' '
 
-    if (newEvent.data.revealedTiles) {
-      newRevealedTiles = newEvent.data.revealedTiles
-    }
+      if (newEvent.data.revealedTiles) {
+        newRevealedTiles = newEvent.data.revealedTiles
+      }
 
-    // Apply event effects to colonists
-    if (state.colonists && state.colonists.length > 0) {
-      const colonistMsgs = applyEventToColonists(state, newEvent.type)
-      for (const msg of colonistMsgs) events += msg + ' '
+      // Apply event effects to colonists
+      if (state.colonists && state.colonists.length > 0) {
+        const colonistMsgs = applyEventToColonists(state, newEvent.type)
+        for (const msg of colonistMsgs) events += msg + ' '
 
-      // Extra morale penalty if building was destroyed by meteor
-      if (newEvent.data.buildingDestroyed) {
-        applyBuildingLostPenalty(state)
+        // Extra morale penalty if building was destroyed by meteor
+        if (newEvent.data.buildingDestroyed) {
+          applyBuildingLostPenalty(state)
+        }
       }
     }
   }

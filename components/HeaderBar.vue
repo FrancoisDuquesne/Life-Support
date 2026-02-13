@@ -7,8 +7,9 @@ const props = defineProps({
   onManualTick: Function,
   devModeAllowed: Boolean,
   devModeEnabled: Boolean,
+  colorblindMode: Boolean,
 })
-const emit = defineEmits(['update:devModeEnabled'])
+const emit = defineEmits(['update:devModeEnabled', 'update:colorblindMode'])
 
 const showSettings = ref(false)
 const colorMode = useColorMode()
@@ -34,6 +35,11 @@ const darkModeEnabled = computed({
 const devModeModel = computed({
   get: () => !!props.devModeEnabled,
   set: (enabled) => emit('update:devModeEnabled', !!enabled),
+})
+
+const colorblindModel = computed({
+  get: () => !!props.colorblindMode,
+  set: (enabled) => emit('update:colorblindMode', !!enabled),
 })
 </script>
 
@@ -94,6 +100,10 @@ const devModeModel = computed({
         <div class="flex items-center justify-between gap-3">
           <span class="text-sm">Dark mode</span>
           <USwitch v-model="darkModeEnabled" />
+        </div>
+        <div class="mt-3 flex items-center justify-between gap-3">
+          <span class="text-sm">Colorblind mode</span>
+          <USwitch v-model="colorblindModel" />
         </div>
         <div
           v-if="devModeAllowed"
