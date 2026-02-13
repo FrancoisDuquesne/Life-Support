@@ -59,6 +59,29 @@ export const DEPOSIT_TYPES = {
   },
 }
 
+// --- Anomaly Types (mission targets, ~2% of tiles, far from center) ---
+
+export const ANOMALY_TYPES = {
+  SIGNAL_SOURCE: {
+    id: 'SIGNAL_SOURCE',
+    name: 'Unknown Signal',
+    description: 'A faint electronic signal of unknown origin',
+    missionType: 'investigate_anomaly',
+  },
+  CRASH_SITE: {
+    id: 'CRASH_SITE',
+    name: 'Crash Site',
+    description: 'Debris from an unidentified craft',
+    missionType: 'salvage_run',
+  },
+  GEOLOGICAL_FEATURE: {
+    id: 'GEOLOGICAL_FEATURE',
+    name: 'Geological Anomaly',
+    description: 'An unusual rock formation worth studying',
+    missionType: 'explore_sector',
+  },
+}
+
 // --- Hazard Zones ---
 
 export const HAZARD_TYPES = {
@@ -173,7 +196,28 @@ export function generateTerrainMap(gw, gh, seed) {
       // A tile can't have both a deposit and a hazard — deposit wins
       if (deposit && hazard) hazard = null
 
-      data[y * gw + x] = { terrain, deposit, hazard }
+      // Anomalies — ~2% of tiles, only far from center (distance >= 12)
+      let anomaly = null
+      const cx = Math.floor(gw / 2)
+      const cy = Math.floor(gh / 2)
+      const dx = x - cx
+      const dy = y - cy
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist >= 12 && !deposit && !hazard) {
+        const anomalyNoise = valueNoise(x, y, seed + 12000, 3)
+        if (anomalyNoise > 0.98) {
+          const anomalyRoll = rng()
+          if (anomalyRoll < 0.33) {
+            anomaly = ANOMALY_TYPES.SIGNAL_SOURCE
+          } else if (anomalyRoll < 0.66) {
+            anomaly = ANOMALY_TYPES.CRASH_SITE
+          } else {
+            anomaly = ANOMALY_TYPES.GEOLOGICAL_FEATURE
+          }
+        }
+      }
+
+      data[y * gw + x] = { terrain, deposit, hazard, anomaly }
     }
   }
 
@@ -193,12 +237,18 @@ export function clearTerrainCache() {
  */
 export function getTerrainAt(terrainMap, x, y, gridWidth) {
   if (!terrainMap)
-    return { terrain: TERRAIN_TYPES.PLAINS, deposit: null, hazard: null }
+    return {
+      terrain: TERRAIN_TYPES.PLAINS,
+      deposit: null,
+      hazard: null,
+      anomaly: null,
+    }
   return (
     terrainMap[y * gridWidth + x] || {
       terrain: TERRAIN_TYPES.PLAINS,
       deposit: null,
       hazard: null,
+      anomaly: null,
     }
   )
 }

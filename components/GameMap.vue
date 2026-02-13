@@ -13,6 +13,7 @@ import {
   drawHPBar,
   drawTerrainOverlay,
   drawEventOverlay,
+  drawAlienEntity,
 } from '~/utils/drawing'
 import {
   getFootprintCellsForType,
@@ -299,7 +300,9 @@ const PIPELINE_RESOURCE_COLORS = {
 }
 
 const PIPELINE_RESOURCE_ORDER = ['energy', 'water', 'oxygen', 'minerals']
-const BUILDING_TYPE_MAP = Object.fromEntries(BUILDING_TYPES.map((b) => [b.id, b]))
+const BUILDING_TYPE_MAP = Object.fromEntries(
+  BUILDING_TYPES.map((b) => [b.id, b]),
+)
 
 function resourceBadgeColor(res) {
   return PIPELINE_RESOURCE_COLORS[res] || '#e2e8f0'
@@ -958,7 +961,43 @@ function render() {
     }
   }
 
-  // Layer 3c: Placement pulse animations
+  // Layer 3c: Alien entities
+  if (props.state && props.state.alienEvents) {
+    const tick = props.state.tickCount || 0
+    for (const evt of props.state.alienEvents) {
+      if (evt.endTick < tick) continue
+      // Position alien entities near the colony edge (approach from map edge toward center)
+      const progress = Math.min(
+        1.0,
+        (tick - evt.startTick) / Math.max(1, evt.endTick - evt.startTick),
+      )
+      const mdv = (props.state.placedBuildings || []).find(
+        (b) => b.type === 'MDV_LANDING_SITE',
+      )
+      const targetX = mdv ? mdv.x : Math.floor(gw / 2)
+      const targetY = mdv ? mdv.y : Math.floor(gh / 2)
+      // Start from a map edge
+      const startX = targetX + 20
+      const startY = targetY - 15
+      const alienX = Math.round(startX + (targetX - startX) * progress * 0.6)
+      const alienY = Math.round(startY + (targetY - startY) * progress * 0.6)
+      if (
+        alienX >= minCol &&
+        alienX <= maxCol &&
+        alienY >= minRow &&
+        alienY <= maxRow
+      ) {
+        if (!revealed || revealed.has(alienX + ',' + alienY)) {
+          const acx = hexScreenX(alienX, z, ox)
+          const acy = hexScreenY(alienX, alienY, z, oy)
+          const alpha = evt.mitigated ? 0.3 : 0.8
+          drawAlienEntity(ctx, evt.type, acx, acy, hexS, alpha, now)
+        }
+      }
+    }
+  }
+
+  // Layer 3d: Placement pulse animations
   for (const anim of placementAnims) {
     if (
       anim.x >= minCol &&
@@ -1198,7 +1237,9 @@ onUnmounted(() => {
     @mouseup.prevent="interaction.onPointerUp(canvasRef, $event, onTileClick)"
     @mouseleave.prevent="interaction.onPointerUp(canvasRef, $event, null)"
     @wheel.prevent="interaction.onWheel(canvasRef, $event)"
-    @touchstart.prevent="interaction.onPointerDown(canvasRef, $event, handleLongPress)"
+    @touchstart.prevent="
+      interaction.onPointerDown(canvasRef, $event, handleLongPress)
+    "
     @touchmove.prevent="interaction.onPointerMove(canvasRef, $event)"
     @touchend.prevent="interaction.onPointerUp(canvasRef, $event, onTileClick)"
     @contextmenu.prevent="handleContextMenu"
