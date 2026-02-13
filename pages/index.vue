@@ -465,6 +465,7 @@ async function onTileClick(gx, gy, canvasX, canvasY) {
   const result = await colony.buildAt(sel, gx, gy)
   if (result && result.success !== false) {
     colony.revealAround(gx, gy, 3)
+    interaction.clearSelection()
   }
 }
 
