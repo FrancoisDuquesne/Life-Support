@@ -13,6 +13,9 @@ export const BUILDING_COLORS = {
   REPAIR_STATION: { fill: '#ef4444', accent: '#f87171' },
   PIPELINE: { fill: '#94a3b8', accent: '#e2e8f0' },
   MDV_LANDING_SITE: { fill: '#64748b', accent: '#e2e8f0' },
+  RESEARCH_LAB: { fill: '#a855f7', accent: '#c084fc' },
+  DEFENSE_TURRET: { fill: '#dc2626', accent: '#f87171' },
+  RADAR_STATION: { fill: '#16a34a', accent: '#4ade80' },
 }
 
 // Pre-generated caches
@@ -403,6 +406,55 @@ export function drawTerrainOverlay(ctx, tile, cx, cy, hexS, tick) {
       }
     }
   }
+
+  // Draw anomaly indicators
+  if (tile.anomaly) {
+    const pulseA = 0.5 + 0.3 * Math.sin(tick * 0.005)
+    switch (tile.anomaly.id) {
+      case 'SIGNAL_SOURCE': {
+        // Pulsing cyan ring
+        ctx.strokeStyle = `rgba(34, 211, 238, ${pulseA})`
+        ctx.lineWidth = Math.max(1, hexS * 0.06)
+        ctx.beginPath()
+        ctx.arc(cx, cy, hexS * 0.3, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.fillStyle = `rgba(34, 211, 238, ${pulseA * 0.6})`
+        ctx.beginPath()
+        ctx.arc(cx, cy, hexS * 0.08, 0, Math.PI * 2)
+        ctx.fill()
+        break
+      }
+      case 'CRASH_SITE': {
+        // Orange X mark
+        const d = hexS * 0.22
+        ctx.strokeStyle = `rgba(251, 146, 60, ${0.6 + pulseA * 0.3})`
+        ctx.lineWidth = Math.max(1.2, hexS * 0.06)
+        ctx.beginPath()
+        ctx.moveTo(cx - d, cy - d)
+        ctx.lineTo(cx + d, cy + d)
+        ctx.moveTo(cx + d, cy - d)
+        ctx.lineTo(cx - d, cy + d)
+        ctx.stroke()
+        break
+      }
+      case 'GEOLOGICAL_FEATURE': {
+        // Purple diamond
+        const d = hexS * 0.2
+        ctx.fillStyle = `rgba(192, 132, 252, ${0.5 + pulseA * 0.3})`
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - d)
+        ctx.lineTo(cx + d * 0.7, cy)
+        ctx.lineTo(cx, cy + d)
+        ctx.lineTo(cx - d * 0.7, cy)
+        ctx.closePath()
+        ctx.fill()
+        ctx.strokeStyle = `rgba(126, 34, 206, ${0.6 + pulseA * 0.2})`
+        ctx.lineWidth = Math.max(0.8, hexS * 0.03)
+        ctx.stroke()
+        break
+      }
+    }
+  }
 }
 
 /**
@@ -690,7 +742,12 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
       // Drill square on cylinder
       const drillSize = cylR * 0.56
       ctx.fillStyle = '#475569'
-      ctx.fillRect(cx + off - drillSize / 2, cy - drillSize / 2, drillSize, drillSize)
+      ctx.fillRect(
+        cx + off - drillSize / 2,
+        cy - drillSize / 2,
+        drillSize,
+        drillSize,
+      )
       break
     }
 
@@ -860,6 +917,115 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
       ctx.lineTo(cx + r * 0.14, cy)
       ctx.moveTo(cx, cy - r * 0.14)
       ctx.lineTo(cx, cy + r * 0.14)
+      ctx.stroke()
+      break
+    }
+
+    case 'RESEARCH_LAB': {
+      // Purple dome with antenna
+      const domeR = r * 0.92
+      ctx.fillStyle = '#ddd6fe'
+      ctx.beginPath()
+      ctx.arc(cx, cy + r * 0.08, domeR, Math.PI, 0)
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = '#7c3aed'
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+      // Dome base
+      ctx.fillStyle = hull
+      ctx.fillRect(cx - domeR, cy + r * 0.08, domeR * 2, r * 0.28)
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1
+      ctx.strokeRect(cx - domeR, cy + r * 0.08, domeR * 2, r * 0.28)
+      // Inner window
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(cx, cy - r * 0.1, domeR * 0.35, 0, Math.PI * 2)
+      ctx.fill()
+      // Antenna
+      ctx.strokeStyle = '#6d28d9'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(cx + r * 0.3, cy - domeR * 0.6)
+      ctx.lineTo(cx + r * 0.3, cy - domeR * 1.1)
+      ctx.stroke()
+      ctx.fillStyle = '#c084fc'
+      ctx.beginPath()
+      ctx.arc(cx + r * 0.3, cy - domeR * 1.1, r * 0.1, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+
+    case 'DEFENSE_TURRET': {
+      // Octagonal base with turret barrel
+      const baseR = r * 0.82
+      ctx.fillStyle = hullShadow
+      ctx.beginPath()
+      for (let i = 0; i < 8; i++) {
+        const a = (Math.PI / 4) * i - Math.PI / 8
+        const vx = cx + baseR * Math.cos(a)
+        const vy = cy + baseR * Math.sin(a)
+        if (i === 0) ctx.moveTo(vx, vy)
+        else ctx.lineTo(vx, vy)
+      }
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+      // Turret center
+      ctx.fillStyle = '#991b1b'
+      ctx.beginPath()
+      ctx.arc(cx, cy, baseR * 0.4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#7f1d1d'
+      ctx.lineWidth = 1
+      ctx.stroke()
+      // Barrel
+      ctx.fillStyle = '#475569'
+      ctx.fillRect(cx - r * 0.08, cy - baseR * 0.95, r * 0.16, baseR * 0.6)
+      ctx.strokeStyle = '#334155'
+      ctx.lineWidth = 0.8
+      ctx.strokeRect(cx - r * 0.08, cy - baseR * 0.95, r * 0.16, baseR * 0.6)
+      // Red dot
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(cx, cy, baseR * 0.15, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+
+    case 'RADAR_STATION': {
+      // Base pedestal + dish
+      const baseW = r * 0.5
+      const baseH = r * 0.7
+      ctx.fillStyle = hull
+      ctx.fillRect(cx - baseW / 2, cy, baseW, baseH)
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1
+      ctx.strokeRect(cx - baseW / 2, cy, baseW, baseH)
+      // Dish (parabolic arc)
+      ctx.fillStyle = '#bbf7d0'
+      ctx.beginPath()
+      ctx.ellipse(cx, cy - r * 0.05, r * 0.85, r * 0.5, 0, Math.PI + 0.3, -0.3)
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = '#15803d'
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+      // Feed horn (small circle at focus)
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(cx, cy - r * 0.35, r * 0.12, 0, Math.PI * 2)
+      ctx.fill()
+      // Support struts
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 0.8
+      ctx.beginPath()
+      ctx.moveTo(cx - r * 0.4, cy + r * 0.15)
+      ctx.lineTo(cx, cy - r * 0.35)
+      ctx.lineTo(cx + r * 0.4, cy + r * 0.15)
       ctx.stroke()
       break
     }
@@ -1183,4 +1349,78 @@ export function drawFootprintBuilding(
 
   ctx.restore()
   return false
+}
+
+/**
+ * Draw an alien entity on the map at a given screen position.
+ */
+export function drawAlienEntity(ctx, type, cx, cy, hexS, alpha, tick) {
+  ctx.save()
+  ctx.globalAlpha = alpha
+
+  switch (type) {
+    case 'SCOUT_PROBE': {
+      // Small glowing orb
+      const pulse = 0.6 + 0.4 * Math.sin(tick * 0.008)
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, hexS * 0.4)
+      grad.addColorStop(0, `rgba(168, 85, 247, ${pulse})`)
+      grad.addColorStop(0.6, `rgba(168, 85, 247, ${pulse * 0.3})`)
+      grad.addColorStop(1, 'rgba(168, 85, 247, 0)')
+      ctx.fillStyle = grad
+      ctx.beginPath()
+      ctx.arc(cx, cy, hexS * 0.4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = `rgba(233, 213, 255, ${0.7 + 0.3 * pulse})`
+      ctx.beginPath()
+      ctx.arc(cx, cy, hexS * 0.12, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+    case 'RAIDER_PARTY': {
+      // Cluster of red dots
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 + tick * 0.003
+        const dist = hexS * (0.15 + 0.1 * Math.sin(tick * 0.005 + i * 1.2))
+        const dx = cx + Math.cos(angle) * dist
+        const dy = cy + Math.sin(angle) * dist
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.6 + 0.3 * Math.sin(tick * 0.006 + i)})`
+        ctx.beginPath()
+        ctx.arc(dx, dy, hexS * 0.08, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      // Central marker
+      ctx.fillStyle = 'rgba(254, 202, 202, 0.9)'
+      ctx.beginPath()
+      ctx.arc(cx, cy, hexS * 0.06, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+    case 'SIEGE': {
+      // Large red formation
+      const formR = hexS * 0.5
+      const pulse = 0.4 + 0.2 * Math.sin(tick * 0.004)
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, formR)
+      grad.addColorStop(0, `rgba(239, 68, 68, ${pulse})`)
+      grad.addColorStop(0.5, `rgba(185, 28, 28, ${pulse * 0.6})`)
+      grad.addColorStop(1, 'rgba(127, 29, 29, 0)')
+      ctx.fillStyle = grad
+      ctx.beginPath()
+      ctx.arc(cx, cy, formR, 0, Math.PI * 2)
+      ctx.fill()
+      // Inner ring
+      ctx.strokeStyle = `rgba(252, 165, 165, ${0.5 + 0.3 * Math.sin(tick * 0.006)})`
+      ctx.lineWidth = Math.max(1, hexS * 0.04)
+      ctx.beginPath()
+      ctx.arc(cx, cy, hexS * 0.25, 0, Math.PI * 2)
+      ctx.stroke()
+      // Center dot
+      ctx.fillStyle = 'rgba(254, 226, 226, 0.95)'
+      ctx.beginPath()
+      ctx.arc(cx, cy, hexS * 0.08, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+  }
+
+  ctx.restore()
 }

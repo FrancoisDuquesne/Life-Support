@@ -22,6 +22,12 @@ import {
   checkPopulationGrowth,
   createInitialColonists,
 } from '~/utils/colonistEngine'
+import { processMissionTick } from '~/utils/missionEngine'
+import {
+  rollAlienEvent,
+  resolveAlienEvent,
+  computeDefenseRating,
+} from '~/utils/defenseEngine'
 import { hexDistance, hexNeighbors, hexesInRadius } from '~/utils/hex'
 
 export const GRID_WIDTH = 64
@@ -33,6 +39,7 @@ export const START_RESOURCES = {
   water: 50,
   minerals: 30,
   oxygen: 80,
+  research: 0,
 }
 
 // HP repair pool distributed evenly across all buildings per repair station
@@ -49,7 +56,8 @@ const WASTE_REDUCTION_PER_RECYCLER = 3
 export const WASTE_OVERFLOW_PENALTY = 0.75
 const MDV_FOOTPRINT_SIZE = 7
 const MAX_BUILD_RADIUS_FROM_COLONY = 5
-const MAX_UPGRADE_LEVEL = 3
+export const MAX_UPGRADE_LEVEL = 5
+const EFFICIENCY_RADIUS = 8
 const PIPELINE_RESOURCES = ['energy', 'water', 'oxygen']
 
 export const BUILDING_TYPES = [
@@ -171,10 +179,403 @@ export const BUILDING_TYPES = [
     special: 'Repairs all buildings (5 HP/tick shared)',
     buildTime: 3,
   },
+  {
+    id: 'RESEARCH_LAB',
+    name: 'Research Lab',
+    maxHp: 100,
+    description: 'Generates research points for advanced upgrades',
+    cost: { minerals: 30, energy: 20 },
+    produces: { research: 3 },
+    consumes: { energy: 4, water: 1 },
+    buildTime: 3,
+  },
+  {
+    id: 'DEFENSE_TURRET',
+    name: 'Defense Turret',
+    maxHp: 100,
+    description: 'Automated turret that defends against alien threats',
+    cost: { minerals: 30, energy: 15, research: 5 },
+    produces: {},
+    consumes: { energy: 3 },
+    special: '+10 defense per level',
+    buildTime: 2,
+  },
+  {
+    id: 'RADAR_STATION',
+    name: 'Radar Station',
+    maxHp: 100,
+    description: 'Detects incoming alien threats with early warning',
+    cost: { minerals: 20, energy: 10, research: 3 },
+    produces: {},
+    consumes: { energy: 2 },
+    special: '+5 defense, 2-tick early warning',
+    buildTime: 2,
+  },
 ]
 
 const BUILDING_MAP = Object.fromEntries(BUILDING_TYPES.map((b) => [b.id, b]))
 const RESOURCE_KEYS = Object.keys(START_RESOURCES)
+
+// --- Branching Upgrade Trees ---
+// Branch levels: 2 and 4. Non-branch levels give +25% production.
+export const UPGRADE_TREES = {
+  SOLAR_PANEL: {
+    2: [
+      {
+        id: 'high_efficiency',
+        name: 'High Efficiency',
+        desc: '+80% production',
+        prodMult: 1.8,
+        consMult: 1.0,
+      },
+      {
+        id: 'array_expansion',
+        name: 'Array Expansion',
+        desc: '+40% prod, +15% to adjacent solar',
+        prodMult: 1.4,
+        consMult: 1.0,
+        adjacentBonus: { type: 'SOLAR_PANEL', mult: 0.15 },
+      },
+    ],
+    4: [
+      {
+        id: 'storm_hardening',
+        name: 'Storm Hardening',
+        desc: 'Immune to dust storms',
+        prodMult: 1.0,
+        consMult: 1.0,
+        dustImmune: true,
+      },
+      {
+        id: 'overcharge',
+        name: 'Overcharge',
+        desc: '+150% prod, +50% degradation',
+        prodMult: 2.5,
+        consMult: 1.0,
+        extraDegrade: 0.5,
+      },
+    ],
+  },
+  MINE: {
+    2: [
+      {
+        id: 'deep_bore',
+        name: 'Deep Bore',
+        desc: '2x mineral production',
+        prodMult: 2.0,
+        consMult: 1.0,
+      },
+      {
+        id: 'survey',
+        name: 'Survey Module',
+        desc: '+30% prod, reveals nearby deposits',
+        prodMult: 1.3,
+        consMult: 1.0,
+        revealDeposits: true,
+      },
+    ],
+    4: [
+      {
+        id: 'automation',
+        name: 'Automation',
+        desc: 'Halve energy consumption',
+        prodMult: 1.0,
+        consMult: 0.5,
+      },
+      {
+        id: 'refinery',
+        name: 'Refinery',
+        desc: '+2 research/tick',
+        prodMult: 1.0,
+        consMult: 1.0,
+        bonusProduction: { research: 2 },
+      },
+    ],
+  },
+  HYDROPONIC_FARM: {
+    2: [
+      {
+        id: 'bio_optimize',
+        name: 'Bio-Optimize',
+        desc: '+80% food production',
+        prodMult: 1.8,
+        consMult: 1.0,
+      },
+      {
+        id: 'aquaponics',
+        name: 'Aquaponics',
+        desc: '+40% food, -50% water use',
+        prodMult: 1.4,
+        consMult: 0.5,
+      },
+    ],
+    4: [
+      {
+        id: 'vertical_stacking',
+        name: 'Vertical Stacking',
+        desc: '+120% food prod',
+        prodMult: 2.2,
+        consMult: 1.0,
+      },
+      {
+        id: 'nutrient_recycler',
+        name: 'Nutrient Recycler',
+        desc: '+60% food, -1 waste/tick',
+        prodMult: 1.6,
+        consMult: 1.0,
+        wasteReduction: 1,
+      },
+    ],
+  },
+  WATER_EXTRACTOR: {
+    2: [
+      {
+        id: 'deep_well',
+        name: 'Deep Well',
+        desc: '+80% water output',
+        prodMult: 1.8,
+        consMult: 1.0,
+      },
+      {
+        id: 'purification',
+        name: 'Purification',
+        desc: '+40% water, +1 oxygen/tick',
+        prodMult: 1.4,
+        consMult: 1.0,
+        bonusProduction: { oxygen: 1 },
+      },
+    ],
+    4: [
+      {
+        id: 'geothermal_pump',
+        name: 'Geothermal Pump',
+        desc: 'No energy cost',
+        prodMult: 1.0,
+        consMult: 0.0,
+      },
+      {
+        id: 'ice_harvester',
+        name: 'Ice Harvester',
+        desc: '+150% on ice tiles',
+        prodMult: 1.0,
+        consMult: 1.0,
+        terrainBonus: { ICE_FIELD: 2.5 },
+      },
+    ],
+  },
+  OXYGEN_GENERATOR: {
+    2: [
+      {
+        id: 'electrolysis_boost',
+        name: 'Electrolysis Boost',
+        desc: '+80% oxygen output',
+        prodMult: 1.8,
+        consMult: 1.0,
+      },
+      {
+        id: 'catalytic',
+        name: 'Catalytic Process',
+        desc: '+50% oxygen, -30% water use',
+        prodMult: 1.5,
+        consMult: 0.7,
+      },
+    ],
+    4: [
+      {
+        id: 'atmospheric_processor',
+        name: 'Atmospheric Processor',
+        desc: '+2 oxygen/colonist capacity',
+        prodMult: 1.0,
+        consMult: 1.0,
+        perCapitaOxygen: 2,
+      },
+      {
+        id: 'cryo_separator',
+        name: 'Cryo Separator',
+        desc: '+200% oxygen prod',
+        prodMult: 3.0,
+        consMult: 1.0,
+      },
+    ],
+  },
+  RTG: {
+    2: [
+      {
+        id: 'enhanced_core',
+        name: 'Enhanced Core',
+        desc: '+80% energy output',
+        prodMult: 1.8,
+        consMult: 1.0,
+      },
+      {
+        id: 'heat_recovery',
+        name: 'Heat Recovery',
+        desc: '+40% energy, heats adjacent habitat',
+        prodMult: 1.4,
+        consMult: 1.0,
+        habitatBonus: true,
+      },
+    ],
+    4: [
+      {
+        id: 'fusion_prototype',
+        name: 'Fusion Prototype',
+        desc: '+200% energy',
+        prodMult: 3.0,
+        consMult: 1.0,
+      },
+      {
+        id: 'distributed_grid',
+        name: 'Distributed Grid',
+        desc: '+100% energy, +5% to all adjacent buildings',
+        prodMult: 2.0,
+        consMult: 1.0,
+        adjacentBonus: { type: null, mult: 0.05 },
+      },
+    ],
+  },
+  RESEARCH_LAB: {
+    2: [
+      {
+        id: 'ai_assist',
+        name: 'AI Assist',
+        desc: '+80% research output',
+        prodMult: 1.8,
+        consMult: 1.0,
+      },
+      {
+        id: 'field_analysis',
+        name: 'Field Analysis',
+        desc: '+40% research, reveals anomalies',
+        prodMult: 1.4,
+        consMult: 1.0,
+        revealAnomalies: true,
+      },
+    ],
+    4: [
+      {
+        id: 'quantum_computing',
+        name: 'Quantum Computing',
+        desc: '+200% research',
+        prodMult: 3.0,
+        consMult: 1.2,
+      },
+      {
+        id: 'collaborative_net',
+        name: 'Collaborative Network',
+        desc: '+5% prod to all buildings',
+        prodMult: 1.0,
+        consMult: 1.0,
+        globalProdBonus: 0.05,
+      },
+    ],
+  },
+}
+
+/**
+ * Get upgrade options for a building at a branch level.
+ * Returns null if not a branch level, or array of branch choices.
+ */
+export function getUpgradeOptions(state, x, y) {
+  const target = state.placedBuildings.find((pb) =>
+    getBuildingCells(pb).some((cell) => cell.x === x && cell.y === y),
+  )
+  if (!target) return null
+  const nextLevel = (target.level || 1) + 1
+  if (nextLevel > MAX_UPGRADE_LEVEL) return null
+  const tree = UPGRADE_TREES[target.type]
+  if (!tree || !tree[nextLevel]) return null
+  return { building: target, level: nextLevel, branches: tree[nextLevel] }
+}
+
+/**
+ * Compute production/consumption multipliers from upgrade tree choices.
+ */
+function getUpgradeMultipliers(pb) {
+  let prodMult = 1.0
+  let consMult = 1.0
+  const choices = pb.upgradeChoices || {}
+  const tree = UPGRADE_TREES[pb.type]
+
+  for (let lvl = 2; lvl <= (pb.level || 1); lvl++) {
+    if (tree && tree[lvl]) {
+      // Branch level — apply chosen branch
+      const chosen = choices[lvl]
+      if (chosen) {
+        const branch = tree[lvl].find((b) => b.id === chosen)
+        if (branch) {
+          prodMult *= branch.prodMult
+          consMult *= branch.consMult
+        }
+      }
+      // If no choice recorded, treat as standard boost
+      else {
+        prodMult *= 1.25
+      }
+    } else {
+      // Non-branch level: standard +25% production
+      prodMult *= 1.25
+    }
+  }
+
+  return { prodMult, consMult }
+}
+
+/**
+ * Check if a building has dust storm immunity from upgrades.
+ */
+function hasUpgradeEffect(pb, effectKey) {
+  const choices = pb.upgradeChoices || {}
+  const tree = UPGRADE_TREES[pb.type]
+  if (!tree) return false
+  for (const [lvl, branchId] of Object.entries(choices)) {
+    const branches = tree[lvl]
+    if (!branches) continue
+    const branch = branches.find((b) => b.id === branchId)
+    if (branch && branch[effectKey]) return true
+  }
+  return false
+}
+
+/**
+ * Get bonus production from upgrade effects (e.g., refinery adding research).
+ */
+function getUpgradeBonusProduction(pb) {
+  const bonuses = {}
+  const choices = pb.upgradeChoices || {}
+  const tree = UPGRADE_TREES[pb.type]
+  if (!tree) return bonuses
+  for (const [lvl, branchId] of Object.entries(choices)) {
+    const branches = tree[lvl]
+    if (!branches) continue
+    const branch = branches.find((b) => b.id === branchId)
+    if (branch && branch.bonusProduction) {
+      for (const [res, amt] of Object.entries(branch.bonusProduction)) {
+        bonuses[res] = (bonuses[res] || 0) + amt
+      }
+    }
+  }
+  return bonuses
+}
+
+/**
+ * Compute distance efficiency for a building based on proximity to MDV or pipelines.
+ * Buildings beyond EFFICIENCY_RADIUS suffer linear production falloff (floor 50%).
+ */
+function computeDistanceEfficiency(state, pb) {
+  let minDist = Infinity
+  for (const other of state.placedBuildings) {
+    if (other.type !== 'MDV_LANDING_SITE') continue
+    for (const cell of getBuildingCells(other)) {
+      const dist = hexDistance(cell.x, cell.y, pb.x, pb.y)
+      if (dist < minDist) minDist = dist
+    }
+  }
+  if (minDist <= EFFICIENCY_RADIUS) return 1.0
+  // Linear falloff beyond radius, floor at 0.5
+  const excess = minDist - EFFICIENCY_RADIUS
+  return Math.max(0.5, 1.0 - excess * 0.05)
+}
 
 function cellKey(x, y) {
   return x + ',' + y
@@ -234,16 +635,14 @@ function isUnderConstruction(pb) {
   return !!pb.isUnderConstruction
 }
 
-function buildingLevel(pb) {
-  return Math.max(1, pb.level || 1)
-}
-
 function productionMultiplierFromLevel(pb) {
-  return 1 + (buildingLevel(pb) - 1) * 0.5
+  const { prodMult } = getUpgradeMultipliers(pb)
+  return prodMult
 }
 
 function consumptionMultiplierFromLevel(pb) {
-  return 1 + (buildingLevel(pb) - 1) * 0.2
+  const { consMult } = getUpgradeMultipliers(pb)
+  return consMult
 }
 
 function isWithinBuildRadius(state, footprint) {
@@ -335,7 +734,9 @@ function isAdjacentToExistingStructure(state, x, y) {
 
 function buildingTouchesPipelineNetwork(pb, cellSet) {
   return getBuildingCells(pb).some((cell) =>
-    hexNeighbors(cell.x, cell.y).some(([nx, ny]) => cellSet.has(cellKey(nx, ny))),
+    hexNeighbors(cell.x, cell.y).some(([nx, ny]) =>
+      cellSet.has(cellKey(nx, ny)),
+    ),
   )
 }
 
@@ -499,7 +900,9 @@ function placeInstantBuilding(state, type, x, y, footprint = null) {
 }
 
 function createDeveloperBalancedStarter(state) {
-  const landing = state.placedBuildings.find((b) => b.type === 'MDV_LANDING_SITE')
+  const landing = state.placedBuildings.find(
+    (b) => b.type === 'MDV_LANDING_SITE',
+  )
   const lx = landing?.x ?? Math.floor(GRID_WIDTH / 2)
   const ly = landing?.y ?? Math.floor(GRID_HEIGHT / 2)
 
@@ -570,6 +973,12 @@ export function createColonyState(options = {}) {
     nextEventId: 1,
     waste: 0,
     wasteCapacity: 50,
+    missions: [],
+    nextMissionId: 1,
+    completedMissions: [],
+    defenseRating: 0,
+    alienThreatLevel: 0,
+    alienEvents: [],
   }
   state.colonists = createInitialColonists(state)
   const landing = findLandingSite(options.terrainMap)
@@ -608,7 +1017,14 @@ export function createColonyState(options = {}) {
  * Shared by processTick (for actual mutation) and useColony (for UI preview).
  */
 export function computeResourceDeltas(state, terrainMap) {
-  const deltas = { energy: 0, food: 0, water: 0, minerals: 0, oxygen: 0 }
+  const deltas = {
+    energy: 0,
+    food: 0,
+    water: 0,
+    minerals: 0,
+    oxygen: 0,
+    research: 0,
+  }
   const modifiers = getActiveModifiers(state)
   const wasteOverflow = state.waste > state.wasteCapacity
   const wastePenalty = wasteOverflow ? WASTE_OVERFLOW_PENALTY : 1.0
@@ -634,19 +1050,24 @@ export function computeResourceDeltas(state, terrainMap) {
     const hpEfficiency = pb.hp !== undefined ? pb.hp / (pb.maxHp || 100) : 1
     const levelProdMult = productionMultiplierFromLevel(pb)
     const levelConsMult = consumptionMultiplierFromLevel(pb)
+    const distEff = computeDistanceEfficiency(state, pb)
 
     const tile = getTerrainAt(terrainMap, pb.x, pb.y, GRID_WIDTH)
     const terrainMult = getProductionMultiplier(bType, tile)
 
+    // Check dust storm immunity from upgrades
+    const dustImmune = hasUpgradeEffect(pb, 'dustImmune')
+
     for (const [res, amt] of Object.entries(bType.produces)) {
-      let effectiveMult = terrainMult * hpEfficiency * wastePenalty * colonyEff
+      let effectiveMult =
+        terrainMult * hpEfficiency * wastePenalty * colonyEff * distEff
       // Role bonus for this building type
       if (roleBonuses.buildingMultipliers[pb.type]) {
         effectiveMult *= roleBonuses.buildingMultipliers[pb.type]
       }
       effectiveMult *= roleBonuses.globalMultiplier
       // Event modifiers
-      if (res === 'energy' && bType.id === 'SOLAR_PANEL') {
+      if (res === 'energy' && bType.id === 'SOLAR_PANEL' && !dustImmune) {
         effectiveMult *= modifiers.solarMultiplier
       }
       if (res === 'energy') {
@@ -654,6 +1075,13 @@ export function computeResourceDeltas(state, terrainMap) {
       }
       deltas[res] = (deltas[res] || 0) + amt * effectiveMult * levelProdMult
     }
+
+    // Bonus production from upgrade effects (e.g., refinery → research)
+    const bonusProd = getUpgradeBonusProduction(pb)
+    for (const [res, amt] of Object.entries(bonusProd)) {
+      deltas[res] = (deltas[res] || 0) + amt * hpEfficiency * distEff
+    }
+
     for (const [res, amt] of Object.entries(bType.consumes)) {
       deltas[res] = (deltas[res] || 0) - amt * hpEfficiency * levelConsMult
     }
@@ -908,6 +1336,37 @@ export function processTick(state, terrainMap, revealedTiles) {
     events += 'WARNING: Waste nearing capacity! '
   }
 
+  // 12b. Process missions
+  if (state.missions && state.missions.length > 0) {
+    const missionResult = processMissionTick(state, terrainMap, revealedTiles)
+    for (const msg of missionResult.messages) events += msg + ' '
+    if (
+      missionResult.newRevealedTiles &&
+      missionResult.newRevealedTiles.length > 0
+    ) {
+      newRevealedTiles = [
+        ...newRevealedTiles,
+        ...missionResult.newRevealedTiles,
+      ]
+    }
+  }
+
+  // 12c. Defense / Alien events
+  state.defenseRating = computeDefenseRating(state)
+  const alienEvent = rollAlienEvent(state)
+  if (alienEvent) {
+    state.alienEvents = state.alienEvents || []
+    state.alienEvents.push(alienEvent)
+    const alienResult = resolveAlienEvent(state, alienEvent)
+    for (const msg of alienResult.messages) events += msg + ' '
+  }
+  // Clean up expired alien events
+  if (state.alienEvents) {
+    state.alienEvents = state.alienEvents.filter(
+      (e) => e.endTick >= state.tickCount,
+    )
+  }
+
   // 13. Population growth — create new colonist
   if (state.colonists) {
     const newColonist = checkPopulationGrowth(state, modifiers)
@@ -1058,10 +1517,16 @@ export function validateBuildPlacement(
       cell.y < 0 ||
       cell.y >= GRID_HEIGHT
     ) {
-      return { ok: false, message: `${bType.name} footprint does not fit on map` }
+      return {
+        ok: false,
+        message: `${bType.name} footprint does not fit on map`,
+      }
     }
     if (hasOccupiedCell(state, cell.x, cell.y)) {
-      return { ok: false, message: `Cell (${cell.x},${cell.y}) is already occupied` }
+      return {
+        ok: false,
+        message: `Cell (${cell.x},${cell.y}) is already occupied`,
+      }
     }
   }
 
@@ -1072,7 +1537,10 @@ export function validateBuildPlacement(
     for (const [res, amt] of Object.entries(bType.cost)) {
       const adjustedCost = res === 'minerals' ? Math.ceil(amt * costMult) : amt
       if ((state.resources[res] || 0) < adjustedCost) {
-        return { ok: false, message: `Not enough resources to build ${bType.name}` }
+        return {
+          ok: false,
+          message: `Not enough resources to build ${bType.name}`,
+        }
       }
     }
   }
@@ -1080,7 +1548,7 @@ export function validateBuildPlacement(
   return { ok: true, message: '', bType, footprint, tile, costMult }
 }
 
-export function upgradeBuildingAt(state, x, y) {
+export function upgradeBuildingAt(state, x, y, branchChoice) {
   const target = state.placedBuildings.find((pb) =>
     getBuildingCells(pb).some((cell) => cell.x === x && cell.y === y),
   )
@@ -1109,6 +1577,28 @@ export function upgradeBuildingAt(state, x, y) {
     }
   }
 
+  // Check if this is a branch level requiring a choice
+  const tree = UPGRADE_TREES[target.type]
+  if (tree && tree[nextLevel]) {
+    if (!branchChoice) {
+      return {
+        success: false,
+        message: 'Branch choice required',
+        requiresBranch: true,
+        branches: tree[nextLevel],
+        colonyState: toSnapshot(state),
+      }
+    }
+    const validBranch = tree[nextLevel].find((b) => b.id === branchChoice)
+    if (!validBranch) {
+      return {
+        success: false,
+        message: 'Invalid branch choice',
+        colonyState: toSnapshot(state),
+      }
+    }
+  }
+
   const upgradeCost = { minerals: 12 * nextLevel, energy: 5 * nextLevel }
   for (const [res, amt] of Object.entries(upgradeCost)) {
     if ((state.resources[res] || 0) < amt) {
@@ -1124,6 +1614,10 @@ export function upgradeBuildingAt(state, x, y) {
   }
 
   target.level = nextLevel
+  if (!target.upgradeChoices) target.upgradeChoices = {}
+  if (branchChoice) {
+    target.upgradeChoices[nextLevel] = branchChoice
+  }
 
   return {
     success: true,
@@ -1225,7 +1719,13 @@ export function toSnapshot(state) {
       isUnderConstruction: !!pb.isUnderConstruction,
       constructionDoneTick: pb.constructionDoneTick || 0,
       cells: getBuildingCells(pb).map((c) => ({ x: c.x, y: c.y })),
+      upgradeChoices: pb.upgradeChoices ? { ...pb.upgradeChoices } : {},
     })),
+    missions: (state.missions || []).map((m) => ({ ...m })),
+    completedMissions: state.completedMissions || [],
+    defenseRating: state.defenseRating || 0,
+    alienThreatLevel: state.alienThreatLevel || 0,
+    alienEvents: (state.alienEvents || []).map((e) => ({ ...e })),
     colonists: colonists.map((c) => ({ ...c })),
     colonistUnits: (state.colonistUnits || []).map((u) => ({ ...u })),
     lastColonistArrivalTick: state.lastColonistArrivalTick || 0,

@@ -202,17 +202,19 @@ export const ROLES = {
   },
   MEDIC: { id: 'MEDIC', name: 'Medic', abbr: 'MED', color: '#ef4444' },
   GENERAL: { id: 'GENERAL', name: 'General', abbr: 'GEN', color: '#8b5cf6' },
+  SOLDIER: { id: 'SOLDIER', name: 'Soldier', abbr: 'SOL', color: '#dc2626' },
 }
 
 const ROLE_LIST = Object.keys(ROLES)
 
 // Which buildings each role boosts (+10% per colonist with that role)
 const ROLE_BUILDING_MAP = {
-  ENGINEER: ['SOLAR_PANEL', 'RTG', 'REPAIR_STATION'],
+  ENGINEER: ['SOLAR_PANEL', 'RTG', 'REPAIR_STATION', 'RESEARCH_LAB'],
   BOTANIST: ['HYDROPONIC_FARM', 'OXYGEN_GENERATOR'],
   GEOLOGIST: ['MINE', 'WATER_EXTRACTOR'],
   MEDIC: [], // heals colonists, no building boost
   GENERAL: null, // null = all buildings (smaller bonus)
+  SOLDIER: ['DEFENSE_TURRET', 'RADAR_STATION'],
 }
 
 // Per-role bonus multiplier for matched buildings
@@ -403,8 +405,10 @@ export function computeRoleBonuses(state) {
   }
 
   // Count effective colonists by role (weighted by individual efficiency)
+  // Exclude colonists on missions — they don't contribute role bonuses
   const roleCounts = {}
   for (const c of state.colonists) {
+    if (c.onMission) continue
     const eff = getColonistEfficiency(c)
     roleCounts[c.role] = (roleCounts[c.role] || 0) + eff
   }
@@ -448,16 +452,20 @@ export function getColonistEfficiency(colonist) {
 export function computeColonyEfficiency(colonists) {
   if (!colonists || colonists.length === 0) return 1.0
 
+  // Exclude colonists on missions from efficiency calculation
+  const present = colonists.filter((c) => !c.onMission)
+  if (present.length === 0) return 1.0
+
   let totalHealthFactor = 0
   let totalMoraleFactor = 0
 
-  for (const c of colonists) {
+  for (const c of present) {
     totalHealthFactor += c.health < 30 ? 0.5 : 1.0
     totalMoraleFactor += c.morale < 20 ? 0.7 : 1.0
   }
 
-  const avgHealth = totalHealthFactor / colonists.length
-  const avgMorale = totalMoraleFactor / colonists.length
+  const avgHealth = totalHealthFactor / present.length
+  const avgMorale = totalMoraleFactor / present.length
   return avgHealth * avgMorale
 }
 

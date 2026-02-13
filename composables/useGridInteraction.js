@@ -161,7 +161,7 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
       const gw = gridWidth.value || 32
       const gh = gridHeight.value || 32
       if (grid.gx >= 0 && grid.gx < gw && grid.gy >= 0 && grid.gy < gh) {
-        if (onTileClick) onTileClick(grid.gx, grid.gy)
+        if (onTileClick) onTileClick(grid.gx, grid.gy, dragStartX, dragStartY)
       }
     }
     isDragging = false

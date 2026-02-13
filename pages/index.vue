@@ -1,6 +1,10 @@
 <script setup>
 import { getTerrainAt, getTerrainBonusText } from '~/utils/terrain'
-import { GRID_WIDTH, WASTE_OVERFLOW_PENALTY } from '~/utils/gameEngine'
+import {
+  GRID_WIDTH,
+  WASTE_OVERFLOW_PENALTY,
+  MAX_UPGRADE_LEVEL,
+} from '~/utils/gameEngine'
 import { formatSignedFixed, roundTo } from '~/utils/formatting'
 import { ROLES } from '~/utils/colonistEngine'
 import {
@@ -44,24 +48,36 @@ function formatSignedOneDecimal(value) {
 const showBuildSheet = ref(false)
 const showResourceGraph = ref(false)
 const showCollapseModal = ref(false)
+const showEventLog = ref(false)
+const showMissionPanel = ref(false)
 const colonistsPanelRef = ref(null)
+
+// Upgrade branch dialog state
+const upgradeBranchDialog = ref({
+  open: false,
+  options: null,
+  buildingX: 0,
+  buildingY: 0,
+})
 
 // Tutorial state
 const TUTORIAL_DONE_KEY = 'life-support-tutorial-done'
 const tutorialStep = ref(-1)
 
 const TUTORIAL_BUILDING_SEQUENCE = [
-  null,           // step 0: welcome
-  'PIPELINE',     // step 1
-  'SOLAR_PANEL',  // step 2
+  null, // step 0: welcome
+  'PIPELINE', // step 1
+  'SOLAR_PANEL', // step 2
   'HYDROPONIC_FARM', // step 3
   'OXYGEN_GENERATOR', // step 4
-  null,           // step 5: complete
+  null, // step 5: complete
 ]
 
 function dismissTutorial() {
   tutorialStep.value = -1
-  try { localStorage.setItem(TUTORIAL_DONE_KEY, '1') } catch (_) {}
+  try {
+    localStorage.setItem(TUTORIAL_DONE_KEY, '1')
+  } catch (_) {}
 }
 
 function onTutorialNext() {
@@ -85,7 +101,10 @@ watch(
       { step: 4, key: 'oxygen_generator', nextBuilding: null },
     ]
     for (const check of checks) {
-      if (tutorialStep.value === check.step && (buildings[check.key] || 0) > 0) {
+      if (
+        tutorialStep.value === check.step &&
+        (buildings[check.key] || 0) > 0
+      ) {
         tutorialStep.value = check.step + 1
         if (check.nextBuilding) {
           interaction.selectBuilding(check.nextBuilding)
@@ -102,29 +121,46 @@ watch(
 // Milestones
 const unlockedMilestoneIds = ref(loadUnlockedMilestones())
 const showMilestones = ref(false)
-const milestoneToast = ref(null)
-let milestoneToastTimer = null
+// Notification stack (replaces both event toast and milestone toast)
+const notificationStack = ref([])
+let notifIdCounter = 0
+
+function pushNotification(msg, severity = 'normal') {
+  const id = ++notifIdCounter
+  notificationStack.value = [
+    ...notificationStack.value,
+    { id, msg, severity, timestamp: Date.now() },
+  ]
+  setTimeout(() => {
+    notificationStack.value = notificationStack.value.filter((n) => n.id !== id)
+  }, 5000)
+}
+
+function dismissNotification(id) {
+  notificationStack.value = notificationStack.value.filter((n) => n.id !== id)
+}
 
 watch(
   () => colony.state.value?.tickCount,
   () => {
     const s = colony.state.value
     if (!s || !s.alive) return
-    const newlyUnlocked = checkMilestones(s, colony.resourceDeltas.value, unlockedMilestoneIds.value)
+    const newlyUnlocked = checkMilestones(
+      s,
+      colony.resourceDeltas.value,
+      unlockedMilestoneIds.value,
+    )
     if (newlyUnlocked.length > 0) {
       for (const m of newlyUnlocked) {
         unlockedMilestoneIds.value.push(m.id)
       }
       saveUnlockedMilestones(unlockedMilestoneIds.value)
-      milestoneToast.value = newlyUnlocked[newlyUnlocked.length - 1]
-      if (milestoneToastTimer) clearTimeout(milestoneToastTimer)
-      milestoneToastTimer = setTimeout(() => { milestoneToast.value = null }, 4000)
+      for (const m of newlyUnlocked) {
+        pushNotification(`${m.icon} ${m.name}: ${m.description}`, 'normal')
+      }
     }
   },
 )
-
-const eventToast = ref(null)
-let toastTimer = null
 
 const contextMenu = ref({
   open: false,
@@ -136,8 +172,12 @@ const contextMenu = ref({
 const radialMenu = ref({ open: false, x: 0, y: 0 })
 
 // Pause game while settings menu is open
-function onSettingsOpen() { colony.pauseGame() }
-function onSettingsClose() { colony.resumeGame() }
+function onSettingsOpen() {
+  colony.pauseGame()
+}
+function onSettingsClose() {
+  colony.resumeGame()
+}
 
 const collapseSummary = computed(() => {
   const reason = colony.state.value && colony.state.value.collapseReason
@@ -165,11 +205,7 @@ watch(
         latest &&
         (latest.severity === 'warning' || latest.severity === 'danger')
       ) {
-        eventToast.value = latest
-        if (toastTimer) clearTimeout(toastTimer)
-        toastTimer = setTimeout(() => {
-          eventToast.value = null
-        }, 4000)
+        pushNotification(latest.msg, latest.severity)
       }
     }
   },
@@ -246,8 +282,8 @@ const hoverBuildingInfo = computed(() => {
   }
 
   const level = building.level || 1
-  const maxLevel = 3
-  const canUpgrade = building.type !== 'MDV_LANDING_SITE' && level < maxLevel
+  const canUpgrade =
+    building.type !== 'MDV_LANDING_SITE' && level < MAX_UPGRADE_LEVEL
   const nextLevel = level + 1
   const upgradeCost = canUpgrade
     ? { minerals: 12 * nextLevel, energy: 5 * nextLevel }
@@ -315,9 +351,22 @@ const contextMenuItems = computed(() => {
       label: `Upgrade ${bInfo?.name || building.type}`,
       icon: 'i-heroicons-arrow-trending-up',
       color: 'primary',
-      disabled: isMDV,
+      disabled: isMDV || (building.level || 1) >= MAX_UPGRADE_LEVEL,
       onSelect: () => {
-        if (!isMDV) {
+        if (isMDV) {
+          contextMenu.value.open = false
+          return
+        }
+        // Check if this level requires a branch choice
+        const branchOptions = colony.getUpgradeOptions(building.x, building.y)
+        if (branchOptions) {
+          upgradeBranchDialog.value = {
+            open: true,
+            options: branchOptions,
+            buildingX: building.x,
+            buildingY: building.y,
+          }
+        } else {
           colony.upgradeBuildingAt(building.x, building.y)
         }
         contextMenu.value.open = false
@@ -336,9 +385,6 @@ const contextMenuItems = computed(() => {
         contextMenu.value.open = false
       },
     },
-    // Future actions:
-    // { label: 'Upgrade', icon: 'i-heroicons-arrow-up', disabled: true },
-    // { label: 'Repair', icon: 'i-heroicons-wrench', disabled: true },
   ]
 })
 
@@ -374,11 +420,44 @@ const hoverTooltipStyle = computed(() => {
   }
 })
 
-async function onTileClick(gx, gy) {
-  const sel = interaction.selectedBuilding.value
-  if (!sel) return
+async function onTileClick(gx, gy, canvasX, canvasY) {
   if (!colony.state.value || !colony.state.value.alive) return
   if (!colony.revealedTiles.value.has(gx + ',' + gy)) return
+
+  const sel = interaction.selectedBuilding.value
+  if (!sel) {
+    // No building selected — check if there's a building at this tile
+    const placed = colony.state.value.placedBuildings || []
+    const building = placed.find((b) =>
+      b.cells && b.cells.length > 0
+        ? b.cells.some((cell) => cell.x === gx && cell.y === gy)
+        : b.x === gx && b.y === gy,
+    )
+
+    // Convert canvas coords to viewport coords for menu positioning
+    const el = mapAreaRef.value
+    let screenX = canvasX || 0
+    let screenY = canvasY || 0
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      screenX = rect.left + (canvasX || 0)
+      screenY = rect.top + (canvasY || 0)
+    }
+
+    if (building) {
+      // Tap on existing building → open context menu (upgrade/demolish)
+      contextMenu.value = {
+        open: true,
+        x: screenX,
+        y: screenY,
+        building: building,
+      }
+    } else {
+      // Tap on empty tile → open radial build menu
+      radialMenu.value = { open: true, x: screenX, y: screenY }
+    }
+    return
+  }
 
   const info = colony.buildingsInfo.value.find((b) => b.id === sel)
   if (!info || !colony.canAfford(info.cost)) return
@@ -448,6 +527,30 @@ function openCrewDetails() {
   }
 }
 
+function onUpgradeBranchChoose(branchId) {
+  const { buildingX, buildingY } = upgradeBranchDialog.value
+  colony.upgradeBuildingAt(buildingX, buildingY, branchId)
+  upgradeBranchDialog.value = {
+    open: false,
+    options: null,
+    buildingX: 0,
+    buildingY: 0,
+  }
+}
+
+function onUpgradeBranchClose() {
+  upgradeBranchDialog.value = {
+    open: false,
+    options: null,
+    buildingX: 0,
+    buildingY: 0,
+  }
+}
+
+function onLaunchMission({ typeId, colonistIds }) {
+  colony.launchMission(typeId, colonistIds, 0, 0)
+}
+
 function resetFromCollapseModal() {
   showCollapseModal.value = false
   colony.resetColony()
@@ -470,17 +573,27 @@ try {
   if (stored !== null) sidebarPinned.value = stored === '1'
 } catch (_) {}
 
-const sidebarVisible = computed(() => sidebarPinned.value || sidebarHovered.value)
+const sidebarVisible = computed(
+  () => sidebarPinned.value || sidebarHovered.value,
+)
 
 function toggleSidebarPin() {
   sidebarPinned.value = !sidebarPinned.value
-  try { localStorage.setItem(SIDEBAR_PIN_KEY, sidebarPinned.value ? '1' : '0') } catch (_) {}
+  try {
+    localStorage.setItem(SIDEBAR_PIN_KEY, sidebarPinned.value ? '1' : '0')
+  } catch (_) {}
 }
 
-watch(colorblindMode, (enabled) => {
-  document.documentElement.classList.toggle('colorblind', enabled)
-  try { localStorage.setItem(COLORBLIND_STORAGE_KEY, enabled ? '1' : '0') } catch (_) {}
-}, { immediate: true })
+watch(
+  colorblindMode,
+  (enabled) => {
+    document.documentElement.classList.toggle('colorblind', enabled)
+    try {
+      localStorage.setItem(COLORBLIND_STORAGE_KEY, enabled ? '1' : '0')
+    } catch (_) {}
+  },
+  { immediate: true },
+)
 
 const devModeModel = computed({
   get: () => colony.devModeEnabled.value,
@@ -490,7 +603,7 @@ const devModeModel = computed({
   },
 })
 
-const SPEED_KEYS = { '1': 5000, '2': 2500, '3': 1000, '4': 500 }
+const SPEED_KEYS = { 1: 5000, 2: 2500, 3: 1000, 4: 500 }
 
 function handleKeyDown(e) {
   // Ignore when typing in inputs
@@ -629,6 +742,51 @@ onUnmounted(() => {
             </p>
           </div>
         </div>
+        <!-- Defense Rating -->
+        <div
+          v-if="
+            colony.state.value && colony.state.value.defenseRating !== undefined
+          "
+          class="bg-default border-default rounded-md border p-1.5 shadow-xs"
+        >
+          <div class="mb-1 flex items-center justify-between gap-2">
+            <h4 class="uppercase">Defense</h4>
+            <span class="text-highlighted text-sm font-bold tabular-nums">
+              {{ colony.state.value.defenseRating || 0 }}
+            </span>
+          </div>
+          <div
+            v-if="
+              colony.state.value.alienEvents &&
+              colony.state.value.alienEvents.length > 0
+            "
+            class="text-error text-xs font-medium"
+          >
+            {{ colony.state.value.alienEvents.length }} active threat{{
+              colony.state.value.alienEvents.length > 1 ? 's' : ''
+            }}
+          </div>
+          <div v-else class="text-muted text-xs">No active threats</div>
+        </div>
+        <!-- Missions -->
+        <div class="bg-default border-default rounded-md border shadow-xs">
+          <div class="flex items-center justify-between p-1.5">
+            <h4 class="uppercase">Missions</h4>
+            <UBadge
+              v-if="colony.state.value?.missions?.length"
+              color="primary"
+              variant="subtle"
+              size="xs"
+              :label="`${colony.state.value.missions.length} active`"
+            />
+          </div>
+          <MissionPanel
+            :available-missions="colony.availableMissions.value"
+            :active-missions="colony.state.value?.missions || []"
+            :tick-count="colony.state.value?.tickCount || 0"
+            @launch="onLaunchMission"
+          />
+        </div>
         <UButton
           color="neutral"
           variant="soft"
@@ -640,27 +798,25 @@ onUnmounted(() => {
       </div>
       <!-- Mobile compact resource bar -->
       <div
-        class="glass-panel border-default/70 absolute top-0 right-0 left-0 z-10 hidden items-center gap-2 overflow-x-auto border-b px-2 py-1.5 max-md:flex"
+        class="glass-panel border-default/70 absolute top-0 right-0 left-0 z-10 hidden flex-col border-b px-1 py-1 max-md:flex"
       >
-        <div class="flex shrink-0 items-center gap-2">
-          <ResourcePanel
-            :state="colony.state.value"
-            :deltas="colony.resourceDeltas.value"
-            :history="colony.resourceHistory.value"
-            compact
-          />
-        </div>
-        <div class="border-default/60 h-5 border-l"></div>
-        <PopulationBar :state="colony.state.value" compact />
-        <div class="border-default/60 h-5 border-l"></div>
-        <div class="flex items-center gap-1 whitespace-nowrap">
-          <UBadge color="warning" variant="subtle" size="xs" label="WST" />
-          <span class="text-highlighted tabular-nums">{{
-            wasteInfo.waste
-          }}</span>
-          <span v-if="wasteOverflowActive" class="text-error text-xs"
-            >-{{ wasteOverflowPenaltyPct }}%</span
-          >
+        <ResourcePanel
+          :state="colony.state.value"
+          :deltas="colony.resourceDeltas.value"
+          :history="colony.resourceHistory.value"
+          compact
+        />
+        <div class="mt-0.5 flex items-center justify-between gap-1 px-0.5">
+          <PopulationBar :state="colony.state.value" compact />
+          <div class="flex items-center gap-1 whitespace-nowrap">
+            <span class="text-muted text-[9px]">WST</span>
+            <span class="text-highlighted text-xs tabular-nums">{{
+              wasteInfo.waste
+            }}</span>
+            <span v-if="wasteOverflowActive" class="text-error text-[9px]"
+              >-{{ wasteOverflowPenaltyPct }}%</span
+            >
+          </div>
         </div>
       </div>
       <div
@@ -733,14 +889,38 @@ onUnmounted(() => {
           >
             <div v-if="hoverTerrainInfo.deposit" class="text-warning">
               {{ hoverTerrainInfo.deposit.name }}
-              <span class="text-muted"> — +{{ Math.round((hoverTerrainInfo.deposit.multiplier - 1) * 100) }}% {{ hoverTerrainInfo.deposit.resource }} production</span>
+              <span class="text-muted">
+                — +{{
+                  Math.round((hoverTerrainInfo.deposit.multiplier - 1) * 100)
+                }}% {{ hoverTerrainInfo.deposit.resource }} production</span
+              >
             </div>
             <div v-if="hoverTerrainInfo.hazard" class="text-error">
               {{ hoverTerrainInfo.hazard.name }}
-              <span class="text-muted"> —
-                <template v-if="hoverTerrainInfo.hazard.effect === 'cost_increase'">+{{ Math.round((hoverTerrainInfo.hazard.costMultiplier - 1) * 100) }}% mineral cost</template>
-                <template v-else-if="hoverTerrainInfo.hazard.effect === 'production_penalty'">-{{ Math.round((1 - hoverTerrainInfo.hazard.productionMultiplier) * 100) }}% production</template>
-                <template v-else-if="hoverTerrainInfo.hazard.effect === 'block_growth'">blocks pop growth</template>
+              <span class="text-muted">
+                —
+                <template
+                  v-if="hoverTerrainInfo.hazard.effect === 'cost_increase'"
+                  >+{{
+                    Math.round(
+                      (hoverTerrainInfo.hazard.costMultiplier - 1) * 100,
+                    )
+                  }}% mineral cost</template
+                >
+                <template
+                  v-else-if="
+                    hoverTerrainInfo.hazard.effect === 'production_penalty'
+                  "
+                  >-{{
+                    Math.round(
+                      (1 - hoverTerrainInfo.hazard.productionMultiplier) * 100,
+                    )
+                  }}% production</template
+                >
+                <template
+                  v-else-if="hoverTerrainInfo.hazard.effect === 'block_growth'"
+                  >blocks pop growth</template
+                >
               </span>
             </div>
           </div>
@@ -752,8 +932,17 @@ onUnmounted(() => {
               <span :class="['font-semibold', hoverBuildingInfo.nameClass]">
                 {{ hoverBuildingInfo.info.name }}
               </span>
-              <span v-if="hoverBuildingInfo.level > 1" class="text-primary text-[10px] font-bold">L{{ hoverBuildingInfo.level }}</span>
-              <span class="text-muted text-[10px] tabular-nums">{{ hoverBuildingInfo.hp }}/{{ hoverBuildingInfo.maxHp }} HP</span>
+              <span
+                v-if="hoverBuildingInfo.level > 1"
+                class="text-primary text-[10px] font-bold"
+                >L{{ hoverBuildingInfo.level }}</span
+              >
+              <span class="text-muted text-[10px] tabular-nums"
+                >{{ hoverBuildingInfo.hp }}/{{
+                  hoverBuildingInfo.maxHp
+                }}
+                HP</span
+              >
             </div>
             <div
               v-if="
@@ -779,7 +968,8 @@ onUnmounted(() => {
             </div>
             <div v-if="hoverBuildingInfo.canUpgrade" class="text-muted mt-0.5">
               Upgrade → L{{ hoverBuildingInfo.level + 1 }}:
-              {{ hoverBuildingInfo.upgradeCost.minerals }}m + {{ hoverBuildingInfo.upgradeCost.energy }}e
+              {{ hoverBuildingInfo.upgradeCost.minerals }}m +
+              {{ hoverBuildingInfo.upgradeCost.energy }}e
               <span class="text-primary">(right-click)</span>
             </div>
           </div>
@@ -807,17 +997,12 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-      <!-- Event toast notification -->
-      <Transition name="toast">
-        <UAlert
-          v-if="eventToast"
-          class="fixed top-14 left-1/2 z-50 max-w-4xl -translate-x-1/2 shadow-lg"
-          :color="eventToast.severity === 'danger' ? 'error' : 'warning'"
-          variant="solid"
-          :title="eventToast.msg"
-        >
-        </UAlert>
-      </Transition>
+      <!-- Notification Stack -->
+      <NotificationStack
+        :notifications="notificationStack"
+        @dismiss="dismissNotification"
+        @open-log="showEventLog = true"
+      />
       <!-- Hover trigger strip (visible only when sidebar is hidden) -->
       <div
         v-if="!sidebarVisible"
@@ -834,7 +1019,11 @@ onUnmounted(() => {
       >
         <div class="flex items-center justify-end px-2 pt-1">
           <UButton
-            :icon="sidebarPinned ? 'i-heroicons-lock-closed' : 'i-heroicons-lock-open'"
+            :icon="
+              sidebarPinned
+                ? 'i-heroicons-lock-closed'
+                : 'i-heroicons-lock-open'
+            "
             :color="sidebarPinned ? 'primary' : 'neutral'"
             variant="ghost"
             size="xs"
@@ -862,7 +1051,18 @@ onUnmounted(() => {
       />
     </div>
     <!-- Mobile bottom controls -->
-    <div class="fixed right-4 bottom-4 z-20 hidden gap-2 max-md:flex">
+    <div
+      class="fixed right-4 z-20 hidden gap-2 max-md:flex"
+      style="bottom: calc(1rem + env(safe-area-inset-bottom, 0px))"
+    >
+      <UButton
+        color="neutral"
+        variant="soft"
+        size="lg"
+        class="font-bold shadow-md"
+        label="Missions"
+        @click="showMissionPanel = true"
+      />
       <UButton
         color="neutral"
         variant="soft"
@@ -972,17 +1172,51 @@ onUnmounted(() => {
       </template>
     </UModal>
 
-    <!-- Milestone toast -->
-    <Transition name="toast">
-      <UAlert
-        v-if="milestoneToast"
-        class="fixed top-14 left-1/2 z-50 max-w-sm -translate-x-1/2 shadow-lg"
-        color="success"
-        variant="solid"
-        :title="`${milestoneToast.icon} ${milestoneToast.name}`"
-        :description="milestoneToast.description"
-      />
-    </Transition>
+    <!-- Mobile Mission Drawer -->
+    <UDrawer
+      v-model:open="showMissionPanel"
+      direction="bottom"
+      title="Missions"
+      description="Send colonists on expeditions"
+    >
+      <template #body>
+        <div class="scrollbar-dark max-h-[60vh] overflow-y-auto">
+          <MissionPanel
+            :available-missions="colony.availableMissions.value"
+            :active-missions="colony.state.value?.missions || []"
+            :tick-count="colony.state.value?.tickCount || 0"
+            @launch="
+              (data) => {
+                onLaunchMission(data)
+                showMissionPanel = false
+              }
+            "
+          />
+        </div>
+      </template>
+    </UDrawer>
+
+    <!-- Upgrade Branch Dialog -->
+    <UpgradeBranchDialog
+      :open="upgradeBranchDialog.open"
+      :options="upgradeBranchDialog.options"
+      @close="onUpgradeBranchClose"
+      @choose="onUpgradeBranchChoose"
+    />
+
+    <!-- Event Log Drawer (opened from notification bell) -->
+    <UDrawer
+      v-model:open="showEventLog"
+      direction="bottom"
+      title="Event Log"
+      description="Colony events and alerts"
+    >
+      <template #body>
+        <div class="scrollbar-dark max-h-[60vh] overflow-y-auto">
+          <EventLog :log="colony.eventLog.value" />
+        </div>
+      </template>
+    </UDrawer>
 
     <!-- Tutorial Overlay -->
     <TutorialOverlay
@@ -1043,19 +1277,3 @@ onUnmounted(() => {
     </Teleport>
   </div>
 </template>
-<style scoped>
-.toast-enter-active {
-  transition: all 0.3s ease-out;
-}
-.toast-leave-active {
-  transition: all 0.3s ease-in;
-}
-.toast-enter-from {
-  opacity: 0;
-  transform: translate(-50%, -10px);
-}
-.toast-leave-to {
-  opacity: 0;
-  transform: translate(-50%, -10px);
-}
-</style>

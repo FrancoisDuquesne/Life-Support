@@ -18,6 +18,7 @@ const RESOURCE_CSS_VAR_MAP = {
   water: '--ui-resource-water',
   minerals: '--ui-resource-minerals',
   oxygen: '--ui-resource-oxygen',
+  research: '--ui-resource-research',
 }
 
 function setSparkRef(key, el) {
@@ -114,6 +115,7 @@ const nuxtColorMap = {
   water: 'resource-water',
   minerals: 'resource-minerals',
   oxygen: 'resource-oxygen',
+  research: 'resource-research',
 }
 
 const abbrev = {
@@ -122,6 +124,7 @@ const abbrev = {
   water: 'H2O',
   minerals: 'MIN',
   oxygen: 'O2',
+  research: 'RES',
 }
 
 function isFlashing(key) {
@@ -133,40 +136,42 @@ function formatSignedDelta(value) {
 }
 </script>
 <template>
-  <!-- Compact mode: mobile horizontal -->
+  <!-- Compact mode: mobile 5-column grid -->
   <template v-if="compact">
-    <div class="flex shrink-0 items-center gap-2">
+    <div class="grid grid-cols-6 gap-1">
       <div
         v-for="r in resources"
         :key="r.key"
         :class="[
-          'flex items-center gap-1 rounded px-1 whitespace-nowrap',
+          'flex flex-col items-center rounded px-0.5 py-0.5',
           r.delta < 0 ? 'ring-error/70 bg-error/10 animate-pulse ring-1' : '',
         ]"
       >
-        <UBadge color="neutral" variant="subtle" :label="abbrev[r.key]" />
+        <span class="text-muted text-[9px] font-medium leading-none">{{
+          abbrev[r.key]
+        }}</span>
         <span
           :class="[
-            'text-highlighted tabular-nums',
+            'text-highlighted text-xs font-bold tabular-nums leading-tight',
             { 'animate-pulse': isFlashing(r.key) },
           ]"
           >{{ formatCompact(r.val) }}</span
         >
         <span
           :class="[
+            'text-[9px] font-bold tabular-nums leading-tight',
             r.delta > 0
               ? 'text-success'
               : r.delta < 0
                 ? 'text-error'
                 : 'text-muted',
-            '',
           ]"
         >
           {{ formatSignedDelta(r.delta) }}
         </span>
         <span
           v-if="r.ticksLeft !== null && r.ticksLeft <= DEPLETION_WARN_TICKS"
-          class="text-error text-[10px] font-bold tabular-nums"
+          class="text-error text-[9px] font-bold tabular-nums leading-none"
         >
           {{ r.ticksLeft <= 0 ? '!' : `${r.ticksLeft}t` }}
         </span>

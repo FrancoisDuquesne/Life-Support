@@ -4,7 +4,7 @@ import { mulberry32 } from '~/utils/hex'
 import { getFootprintCellsForType } from '~/utils/gameEngine'
 
 const SAVE_KEY = 'life-support-save'
-const SAVE_VERSION = 4
+const SAVE_VERSION = 5
 
 function normalizePlacedBuilding(pb) {
   const fallbackCells = getFootprintCellsForType(pb.type, pb.x, pb.y)
@@ -25,6 +25,7 @@ function normalizePlacedBuilding(pb) {
     level: pb.level || 1,
     isUnderConstruction: !!pb.isUnderConstruction,
     constructionDoneTick: pb.constructionDoneTick || 0,
+    upgradeChoices: pb.upgradeChoices || {},
   }
 }
 
@@ -56,6 +57,12 @@ export function saveGame(state, revealedTiles) {
         x: u.x,
         y: u.y,
       })),
+      missions: state.missions || [],
+      nextMissionId: state.nextMissionId || 1,
+      completedMissions: state.completedMissions || [],
+      defenseRating: state.defenseRating || 0,
+      alienThreatLevel: state.alienThreatLevel || 0,
+      alienEvents: state.alienEvents || [],
     },
     revealedTiles: Array.from(revealedTiles),
   }
@@ -158,6 +165,45 @@ function migrateV3toV4(data) {
 }
 
 /**
+ * Migrate v4 saves to v5 (add research, upgrade choices, missions, defense).
+ */
+function migrateV4toV5(data) {
+  const s = data.state
+  // Add research resource
+  if (s.resources && s.resources.research === undefined) {
+    s.resources.research = 0
+  }
+  // Add upgrade choices to placed buildings
+  if (s.placedBuildings) {
+    for (const pb of s.placedBuildings) {
+      if (!pb.upgradeChoices) pb.upgradeChoices = {}
+    }
+  }
+  // Add mission fields
+  if (!s.missions) s.missions = []
+  if (!s.nextMissionId) s.nextMissionId = 1
+  if (!s.completedMissions) s.completedMissions = []
+  // Add defense fields
+  if (s.defenseRating === undefined) s.defenseRating = 0
+  if (s.alienThreatLevel === undefined) s.alienThreatLevel = 0
+  if (!s.alienEvents) s.alienEvents = []
+  // Add onMission to colonists
+  if (s.colonists) {
+    for (const c of s.colonists) {
+      if (c.onMission === undefined) c.onMission = null
+    }
+  }
+  // Add building counts for new building types
+  if (s.buildings) {
+    if (s.buildings.research_lab === undefined) s.buildings.research_lab = 0
+    if (s.buildings.defense_turret === undefined) s.buildings.defense_turret = 0
+    if (s.buildings.radar_station === undefined) s.buildings.radar_station = 0
+  }
+  data.v = 5
+  return data
+}
+
+/**
  * Load saved game from localStorage.
  * Returns { state, revealedTiles } or null if no save / incompatible version.
  */
@@ -171,6 +217,7 @@ export function loadGame() {
     if (data.v === 1) data = migrateV1toV2(data)
     if (data.v === 2) data = migrateV2toV3(data)
     if (data.v === 3) data = migrateV3toV4(data)
+    if (data.v === 4) data = migrateV4toV5(data)
 
     if (data.v !== SAVE_VERSION) return null
 
@@ -210,6 +257,12 @@ export function loadGame() {
         x: u.x,
         y: u.y,
       })),
+      missions: s.missions || [],
+      nextMissionId: s.nextMissionId || 1,
+      completedMissions: s.completedMissions || [],
+      defenseRating: s.defenseRating || 0,
+      alienThreatLevel: s.alienThreatLevel || 0,
+      alienEvents: s.alienEvents || [],
     }
 
     const revealedTiles = new Set(data.revealedTiles)

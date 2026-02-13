@@ -9,9 +9,14 @@ import {
   toSnapshot,
   getBuildingsInfo as engineBuildingsInfo,
   computeResourceDeltas as engineDeltas,
+  getUpgradeOptions as engineGetUpgradeOptions,
   GRID_WIDTH,
   GRID_HEIGHT,
 } from '~/utils/gameEngine'
+import {
+  createMission as engineCreateMission,
+  getAvailableMissions as engineAvailableMissions,
+} from '~/utils/missionEngine'
 import { saveGame, loadGame, clearSave } from '~/utils/saveManager'
 import {
   generateTerrainMap,
@@ -30,6 +35,7 @@ export function useColony() {
     water: 0,
     minerals: 0,
     oxygen: 0,
+    research: 0,
     waste: 0,
   }
 
@@ -313,9 +319,9 @@ export function useColony() {
     return result
   }
 
-  function upgradeBuildingAt(x, y) {
+  function upgradeBuildingAt(x, y, branchChoice) {
     if (!colony) return { success: false, message: 'Colony not initialized' }
-    const result = engineUpgradeBuilding(colony, x, y)
+    const result = engineUpgradeBuilding(colony, x, y, branchChoice)
     state.value = result.colonyState
     addLog(state.value ? state.value.tickCount : null, result.message)
     if (result.success) {
@@ -323,6 +329,33 @@ export function useColony() {
     }
     return result
   }
+
+  function getUpgradeOptions(x, y) {
+    if (!colony) return null
+    return engineGetUpgradeOptions(colony, x, y)
+  }
+
+  function launchMission(typeId, colonistIds, targetX, targetY) {
+    if (!colony) return { success: false, message: 'Colony not initialized' }
+    const result = engineCreateMission(
+      colony,
+      typeId,
+      colonistIds,
+      targetX,
+      targetY,
+    )
+    if (result.success) {
+      state.value = toSnapshot(colony)
+      addLog(state.value.tickCount, result.message)
+      trySave()
+    }
+    return result
+  }
+
+  const availableMissions = computed(() => {
+    if (!colony) return []
+    return engineAvailableMissions(colony)
+  })
 
   function demolishAt(x, y) {
     if (!colony) return { success: false, message: 'Colony not initialized' }
@@ -373,6 +406,7 @@ export function useColony() {
       water: cs.resources.water || 0,
       minerals: cs.resources.minerals || 0,
       oxygen: cs.resources.oxygen || 0,
+      research: cs.resources.research || 0,
     })
     if (resourceHistory.value.length > MAX_HISTORY) {
       resourceHistory.value = resourceHistory.value.slice(-MAX_HISTORY)
@@ -382,8 +416,10 @@ export function useColony() {
   function addLog(tick, msg) {
     let severity = 'normal'
     if (/COLLAPSED|DEAD|has died/i.test(msg)) severity = 'collapse'
-    else if (/METEOR|disrepair/i.test(msg)) severity = 'danger'
-    else if (/WARNING|shortage|STORM|FLARE|FAILURE|Waste/i.test(msg))
+    else if (/METEOR|disrepair|\[ALIEN\]/i.test(msg)) severity = 'danger'
+    else if (
+      /WARNING|shortage|STORM|FLARE|FAILURE|Waste|\[DEFENSE\]/i.test(msg)
+    )
       severity = 'warning'
     eventLog.value.push({ tick, msg, severity, id: Date.now() + Math.random() })
     if (eventLog.value.length > 200) {
@@ -461,12 +497,15 @@ export function useColony() {
     terrainMap,
     buildableCells,
     activeEvents,
+    availableMissions,
     tickSpeed,
     devModeAllowed: DEV_MODE_ALLOWED,
     devModeEnabled,
     init,
     buildAt,
     upgradeBuildingAt,
+    getUpgradeOptions,
+    launchMission,
     demolishAt,
     resetColony,
     canAfford,
