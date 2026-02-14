@@ -278,7 +278,6 @@ const hoverBuildingInfo = computed(() => {
     RTG: 'text-primary',
     HABITAT: 'text-muted',
     RECYCLING_CENTER: 'text-success',
-    REPAIR_STATION: 'text-error',
   }
 
   const level = building.level || 1
@@ -297,8 +296,6 @@ const hoverBuildingInfo = computed(() => {
     level,
     canUpgrade,
     upgradeCost,
-    hp: Math.round(building.hp ?? 100),
-    maxHp: building.maxHp ?? 100,
   }
 })
 
@@ -937,12 +934,6 @@ onUnmounted(() => {
                 v-if="hoverBuildingInfo.level > 1"
                 class="text-primary text-[10px] font-bold"
                 >L{{ hoverBuildingInfo.level }}</span
-              >
-              <span class="text-muted text-[10px] tabular-nums"
-                >{{ hoverBuildingInfo.hp }}/{{
-                  hoverBuildingInfo.maxHp
-                }}
-                HP</span
               >
             </div>
             <div

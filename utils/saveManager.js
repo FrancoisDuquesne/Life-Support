@@ -4,7 +4,7 @@ import { mulberry32 } from '~/utils/hex'
 import { getFootprintCellsForType } from '~/utils/gameEngine'
 
 const SAVE_KEY = 'life-support-save'
-const SAVE_VERSION = 5
+const SAVE_VERSION = 6
 
 function normalizePlacedBuilding(pb) {
   const fallbackCells = getFootprintCellsForType(pb.type, pb.x, pb.y)
@@ -20,8 +20,6 @@ function normalizePlacedBuilding(pb) {
     y: pb.y,
     cells: cells.map((c) => ({ x: c.x, y: c.y })),
     disabledUntilTick: pb.disabledUntilTick || 0,
-    hp: pb.hp !== undefined ? pb.hp : 100,
-    maxHp: pb.maxHp || 100,
     level: pb.level || 1,
     isUnderConstruction: !!pb.isUnderConstruction,
     constructionDoneTick: pb.constructionDoneTick || 0,
@@ -204,6 +202,29 @@ function migrateV4toV5(data) {
 }
 
 /**
+ * Migrate v5 saves to v6 (remove HP system and REPAIR_STATION).
+ */
+function migrateV5toV6(data) {
+  const s = data.state
+  // Strip hp/maxHp from placed buildings and remove REPAIR_STATION buildings
+  if (s.placedBuildings) {
+    s.placedBuildings = s.placedBuildings.filter(
+      (pb) => pb.type !== 'REPAIR_STATION',
+    )
+    for (const pb of s.placedBuildings) {
+      delete pb.hp
+      delete pb.maxHp
+    }
+  }
+  // Reset repair_station building count
+  if (s.buildings) {
+    delete s.buildings.repair_station
+  }
+  data.v = 6
+  return data
+}
+
+/**
  * Load saved game from localStorage.
  * Returns { state, revealedTiles } or null if no save / incompatible version.
  */
@@ -218,6 +239,7 @@ export function loadGame() {
     if (data.v === 2) data = migrateV2toV3(data)
     if (data.v === 3) data = migrateV3toV4(data)
     if (data.v === 4) data = migrateV4toV5(data)
+    if (data.v === 5) data = migrateV5toV6(data)
 
     if (data.v !== SAVE_VERSION) return null
 

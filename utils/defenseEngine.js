@@ -45,7 +45,6 @@ export function computeDefenseRating(state) {
   let defense = 0
 
   for (const pb of state.placedBuildings || []) {
-    if (pb.hp !== undefined && pb.hp <= 0) continue
     if (pb.isUnderConstruction) continue
 
     if (pb.type === 'DEFENSE_TURRET') {
@@ -96,7 +95,7 @@ export function rollAlienEvent(state) {
     if (rng() < evtType.probability * threatMult) {
       // Check for radar early warning
       const hasRadar = (state.placedBuildings || []).some(
-        (pb) => pb.type === 'RADAR_STATION' && !pb.isUnderConstruction && (pb.hp || 0) > 0,
+        (pb) => pb.type === 'RADAR_STATION' && !pb.isUnderConstruction,
       )
 
       return {
@@ -146,20 +145,21 @@ export function resolveAlienEvent(state, event) {
     }
   }
 
-  // Apply building damage
+  // Apply building disable
   if (evtType.damage && damageScale > 0) {
     const totalDamage = Math.round(evtType.damage * damageScale)
-    // Distribute damage to random buildings
+    // Disable a random building for a duration based on damage
     const damageable = (state.placedBuildings || []).filter(
-      (pb) => pb.type !== 'MDV_LANDING_SITE' && pb.hp > 0,
+      (pb) => pb.type !== 'MDV_LANDING_SITE' && !pb.isUnderConstruction,
     )
     if (damageable.length > 0) {
       const rng = mulberry32(state.terrainSeed * 67 + event.id * 31)
       const targetIdx = Math.floor(rng() * damageable.length)
       const target = damageable[targetIdx]
-      target.hp = Math.max(0, target.hp - totalDamage)
+      const disableTicks = Math.ceil(totalDamage / 5)
+      target.disabledUntilTick = state.tickCount + disableTicks
       messages.push(
-        `[ALIEN] ${evtType.name} dealt ${totalDamage} damage to ${target.type.replace(/_/g, ' ')} at (${target.x},${target.y})`,
+        `[ALIEN] ${evtType.name} disabled ${target.type.replace(/_/g, ' ')} at (${target.x},${target.y}) for ${disableTicks} ticks`,
       )
     }
   }

@@ -42,10 +42,6 @@ export const START_RESOURCES = {
   research: 0,
 }
 
-// HP repair pool distributed evenly across all buildings per repair station
-const REPAIR_POOL_PER_STATION = 5
-// HP degradation per tick per building
-const DEGRADATION_PER_TICK = 0.25
 // Waste generated per active building per tick
 const WASTE_PER_BUILDING = 0.3
 // Waste generated per colonist per tick
@@ -64,7 +60,6 @@ export const BUILDING_TYPES = [
   {
     id: 'MDV_LANDING_SITE',
     name: 'MDV Landing Site',
-    maxHp: 999,
     description: 'Mars Descent Vehicle and landing platform',
     cost: {},
     produces: {},
@@ -76,7 +71,6 @@ export const BUILDING_TYPES = [
   {
     id: 'PIPELINE',
     name: 'Pipeline',
-    maxHp: 80,
     description:
       'Resource conduit that carries adjacent water, oxygen, and energy',
     cost: { minerals: 2 },
@@ -87,7 +81,6 @@ export const BUILDING_TYPES = [
   {
     id: 'SOLAR_PANEL',
     name: 'Solar Panel',
-    maxHp: 100,
     description: 'Generates energy from sunlight',
     cost: { minerals: 10 },
     produces: { energy: 5 },
@@ -96,7 +89,6 @@ export const BUILDING_TYPES = [
   {
     id: 'HYDROPONIC_FARM',
     name: 'Hydroponic Farm',
-    maxHp: 100,
     description: 'Grows food using water and energy',
     cost: { minerals: 15, energy: 5 },
     produces: { food: 5 },
@@ -106,7 +98,6 @@ export const BUILDING_TYPES = [
   {
     id: 'WATER_EXTRACTOR',
     name: 'Water Extractor',
-    maxHp: 100,
     description: 'Extracts water from the Martian ice',
     cost: { minerals: 12 },
     produces: { water: 6 },
@@ -116,7 +107,6 @@ export const BUILDING_TYPES = [
   {
     id: 'MINE',
     name: 'Mining Facility',
-    maxHp: 100,
     description: 'Extracts minerals from the ground',
     cost: { minerals: 8 },
     produces: { minerals: 4 },
@@ -127,7 +117,6 @@ export const BUILDING_TYPES = [
   {
     id: 'HABITAT',
     name: 'Living Habitat',
-    maxHp: 100,
     description: 'Houses colonists, increases population capacity by 5',
     cost: { minerals: 25, water: 10 },
     produces: {},
@@ -138,7 +127,6 @@ export const BUILDING_TYPES = [
   {
     id: 'OXYGEN_GENERATOR',
     name: 'Oxygen Generator',
-    maxHp: 100,
     description: 'Electrolyzes water to produce breathable oxygen',
     cost: { minerals: 15, energy: 10 },
     produces: { oxygen: 6 },
@@ -148,7 +136,6 @@ export const BUILDING_TYPES = [
   {
     id: 'RTG',
     name: 'RTG Power Unit',
-    maxHp: 100,
     description:
       'Radioisotope generator — steady power, unaffected by dust storms',
     cost: { minerals: 20 },
@@ -159,7 +146,6 @@ export const BUILDING_TYPES = [
   {
     id: 'RECYCLING_CENTER',
     name: 'Recycling Center',
-    maxHp: 100,
     description: 'Processes colony waste, reducing buildup by 3/tick',
     cost: { minerals: 20, energy: 10 },
     produces: {},
@@ -169,20 +155,8 @@ export const BUILDING_TYPES = [
     buildTime: 3,
   },
   {
-    id: 'REPAIR_STATION',
-    name: 'Repair Station',
-    maxHp: 100,
-    description: 'Automated drones that maintain colony infrastructure',
-    cost: { minerals: 25, energy: 15 },
-    produces: {},
-    consumes: { energy: 3, minerals: 1 },
-    special: 'Repairs all buildings (5 HP/tick shared)',
-    buildTime: 3,
-  },
-  {
     id: 'RESEARCH_LAB',
     name: 'Research Lab',
-    maxHp: 100,
     description: 'Generates research points for advanced upgrades',
     cost: { minerals: 30, energy: 20 },
     produces: { research: 3 },
@@ -192,7 +166,6 @@ export const BUILDING_TYPES = [
   {
     id: 'DEFENSE_TURRET',
     name: 'Defense Turret',
-    maxHp: 100,
     description: 'Automated turret that defends against alien threats',
     cost: { minerals: 30, energy: 15, research: 5 },
     produces: {},
@@ -203,7 +176,6 @@ export const BUILDING_TYPES = [
   {
     id: 'RADAR_STATION',
     name: 'Radar Station',
-    maxHp: 100,
     description: 'Detects incoming alien threats with early warning',
     cost: { minerals: 20, energy: 10, research: 3 },
     produces: {},
@@ -249,10 +221,9 @@ export const UPGRADE_TREES = {
       {
         id: 'overcharge',
         name: 'Overcharge',
-        desc: '+150% prod, +50% degradation',
+        desc: '+150% production',
         prodMult: 2.5,
         consMult: 1.0,
-        extraDegrade: 0.5,
       },
     ],
   },
@@ -794,7 +765,6 @@ export function getBuildableCells(state) {
 
 function isBuildingActive(pb, tickCount) {
   if (pb.disabledUntilTick && pb.disabledUntilTick > tickCount) return false
-  if (pb.hp !== undefined && pb.hp <= 0) return false
   return true
 }
 
@@ -881,8 +851,6 @@ function placeInstantBuilding(state, type, x, y, footprint = null) {
     y,
     cells,
     disabledUntilTick: 0,
-    hp: bType.maxHp,
-    maxHp: bType.maxHp,
     level: 1,
     isUnderConstruction: false,
     constructionDoneTick: state.tickCount,
@@ -999,8 +967,6 @@ export function createColonyState(options = {}) {
     y: landing.y,
     cells: mdvCells,
     disabledUntilTick: 0,
-    hp: 999,
-    maxHp: 999,
   })
   state.buildings.mdv_landing_site = 1
   for (const cell of mdvCells) {
@@ -1047,7 +1013,6 @@ export function computeResourceDeltas(state, terrainMap) {
 
     activeBuildingCount++
 
-    const hpEfficiency = pb.hp !== undefined ? pb.hp / (pb.maxHp || 100) : 1
     const levelProdMult = productionMultiplierFromLevel(pb)
     const levelConsMult = consumptionMultiplierFromLevel(pb)
     const distEff = computeDistanceEfficiency(state, pb)
@@ -1060,7 +1025,7 @@ export function computeResourceDeltas(state, terrainMap) {
 
     for (const [res, amt] of Object.entries(bType.produces)) {
       let effectiveMult =
-        terrainMult * hpEfficiency * wastePenalty * colonyEff * distEff
+        terrainMult * wastePenalty * colonyEff * distEff
       // Role bonus for this building type
       if (roleBonuses.buildingMultipliers[pb.type]) {
         effectiveMult *= roleBonuses.buildingMultipliers[pb.type]
@@ -1079,11 +1044,11 @@ export function computeResourceDeltas(state, terrainMap) {
     // Bonus production from upgrade effects (e.g., refinery → research)
     const bonusProd = getUpgradeBonusProduction(pb)
     for (const [res, amt] of Object.entries(bonusProd)) {
-      deltas[res] = (deltas[res] || 0) + amt * hpEfficiency * distEff
+      deltas[res] = (deltas[res] || 0) + amt * distEff
     }
 
     for (const [res, amt] of Object.entries(bType.consumes)) {
-      deltas[res] = (deltas[res] || 0) - amt * hpEfficiency * levelConsMult
+      deltas[res] = (deltas[res] || 0) - amt * levelConsMult
     }
 
     if (bType.id === 'RECYCLING_CENTER') activeRecyclerCount++
@@ -1174,13 +1139,7 @@ export function processTick(state, terrainMap, revealedTiles) {
     }
   }
 
-  // 3. Building degradation
-  for (const pb of state.placedBuildings) {
-    if (pb.hp !== undefined) {
-      pb.hp = Math.max(0, pb.hp - DEGRADATION_PER_TICK)
-    }
-  }
-
+  // 3. Check construction completion
   for (const pb of state.placedBuildings) {
     if (
       isUnderConstruction(pb) &&
@@ -1192,51 +1151,7 @@ export function processTick(state, terrainMap, revealedTiles) {
     }
   }
 
-  // 4. Repair station effect — distribute repair pool evenly
-  const activeRepairStations = state.placedBuildings.filter(
-    (pb) =>
-      pb.type === 'REPAIR_STATION' && isBuildingActive(pb, state.tickCount),
-  )
-  if (activeRepairStations.length > 0 && state.placedBuildings.length > 0) {
-    const totalPool = activeRepairStations.length * REPAIR_POOL_PER_STATION
-    const repairPerBuilding = totalPool / state.placedBuildings.length
-    for (const pb of state.placedBuildings) {
-      if (pb.hp !== undefined) {
-        pb.hp = Math.min(pb.maxHp, pb.hp + repairPerBuilding)
-      }
-    }
-  }
-
-  // 5. Remove dead buildings (hp <= 0) + morale penalty
-  const deadBuildings = state.placedBuildings.filter(
-    (pb) => pb.type !== 'MDV_LANDING_SITE' && pb.hp !== undefined && pb.hp <= 0,
-  )
-  for (const dead of deadBuildings) {
-    for (const cell of getBuildingCells(dead)) {
-      state.occupiedCells.delete(cellKey(cell.x, cell.y))
-    }
-    state.buildings[dead.type.toLowerCase()] = Math.max(
-      0,
-      (state.buildings[dead.type.toLowerCase()] || 0) - 1,
-    )
-    if (dead.type === 'HABITAT')
-      state.populationCapacity = Math.max(10, state.populationCapacity - 5)
-    const bName = BUILDING_MAP[dead.type]
-      ? BUILDING_MAP[dead.type].name
-      : dead.type
-    events += `${bName} at (${dead.x},${dead.y}) collapsed from disrepair! `
-  }
-  if (deadBuildings.length > 0) {
-    state.placedBuildings = state.placedBuildings.filter(
-      (pb) =>
-        pb.type === 'MDV_LANDING_SITE' || pb.hp === undefined || pb.hp > 0,
-    )
-    if (state.colonists && state.colonists.length > 0) {
-      applyBuildingLostPenalty(state)
-    }
-  }
-
-  // 6. Process colonist health, morale, deaths
+  // 4. Process colonist health, morale, deaths
   if (state.colonists && state.colonists.length > 0) {
     const colonistResult = processColonistTick(state)
     for (const msg of colonistResult.messages) events += msg + ' '
@@ -1439,8 +1354,6 @@ export function buildAt(state, type, x, y, terrainMap) {
     y,
     cells: footprint,
     disabledUntilTick: 0,
-    hp: bType.maxHp,
-    maxHp: bType.maxHp,
     level: 1,
     isUnderConstruction: true,
     constructionDoneTick: state.tickCount + (bType.buildTime || 2),
@@ -1713,8 +1626,6 @@ export function toSnapshot(state) {
       x: pb.x,
       y: pb.y,
       disabledUntilTick: pb.disabledUntilTick || 0,
-      hp: pb.hp !== undefined ? pb.hp : 100,
-      maxHp: pb.maxHp || 100,
       level: pb.level || 1,
       isUnderConstruction: !!pb.isUnderConstruction,
       constructionDoneTick: pb.constructionDoneTick || 0,
@@ -1755,7 +1666,6 @@ export function getBuildingsInfo() {
     cost: { ...b.cost },
     produces: { ...b.produces },
     consumes: { ...b.consumes },
-    maxHp: b.maxHp,
     special: b.special || null,
     footprintSize: b.footprintSize || 1,
     buildTime: b.buildTime || 2,

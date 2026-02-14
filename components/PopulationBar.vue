@@ -107,7 +107,7 @@ const visibleDots = computed(() => colonists.value.slice(0, 8))
 const overflowCount = computed(() => Math.max(0, colonists.value.length - 8))
 
 const ROLE_EFFECTS = {
-  ENGINEER: '+10%/colonist to Solar Panel, RTG, Repair Station',
+  ENGINEER: '+10%/colonist to Solar Panel, RTG, Research Lab',
   BOTANIST: '+10%/colonist to Farm, O2 Generator',
   GEOLOGIST: '+10%/colonist to Mine, Water Extractor',
   MEDIC: '+0.5 HP/tick healing to all colonists',

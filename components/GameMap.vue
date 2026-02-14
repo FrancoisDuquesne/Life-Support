@@ -10,7 +10,6 @@ import {
   drawRocks,
   drawBuilding,
   drawFootprintBuilding,
-  drawHPBar,
   drawTerrainOverlay,
   drawEventOverlay,
   drawAlienEntity,
@@ -68,8 +67,7 @@ function getFootprintRenderMetrics(cells, z, ox, oy, hexS) {
     HEX_H * z * 0.88,
     Math.min(footprintW, footprintH) * (cells.length > 1 ? 0.9 : 0.82),
   )
-  const hpAnchorCy = maxCy
-  return { cx, cy, iconSize, hpAnchorCy }
+  return { cx, cy, iconSize }
 }
 
 function roundCoord(v) {
@@ -160,7 +158,6 @@ const SINGLE_TILE_ROTATIONS = {
   SOLAR_PANEL: Math.PI / 6,
   MINE: Math.PI / 6,
   HABITAT: Math.PI / 6,
-  REPAIR_STATION: Math.PI / 6,
 }
 
 const MULTI_TILE_OFFSETS = {
@@ -326,7 +323,6 @@ function computePipelineNodeResources(placedBuildings) {
 
   for (const b of placedBuildings || []) {
     if (b.type === 'PIPELINE' || b.isUnderConstruction) continue
-    if ((b.hp ?? 100) <= 0) continue
     const bType = BUILDING_TYPE_MAP[b.type]
     const produced = Object.entries(bType?.produces || {})
       .filter(([res, amount]) => amount > 0 && PIPELINE_RESOURCE_COLORS[res])
@@ -836,6 +832,7 @@ function render() {
             oy,
             hexS,
             1,
+            b.level || 1,
           )
         }
       }
@@ -857,23 +854,14 @@ function render() {
           metrics.iconSize,
           1,
           rotation,
+          b.level || 1,
         )
       }
-      drawHPBar(
-        ctx,
-        metrics.cx,
-        (b.type === 'MINE' || b.type === 'RECYCLING_CENTER') && cells.length > 1
-          ? metrics.cy - hexS * 0.45
-          : metrics.hpAnchorCy,
-        hexS,
-        b.hp ?? 100,
-        b.maxHp ?? 100,
-      )
       if ((b.level || 1) > 1) {
         ctx.save()
         const badgeX = metrics.cx + hexS * 0.42
         const badgeY = metrics.cy - hexS * 0.4
-        ctx.fillStyle = 'rgba(14, 116, 144, 0.92)'
+        ctx.fillStyle = (b.level || 1) >= 4 ? 'rgba(202, 138, 4, 0.92)' : 'rgba(14, 116, 144, 0.92)'
         ctx.beginPath()
         ctx.arc(badgeX, badgeY, Math.max(6, hexS * 0.22), 0, Math.PI * 2)
         ctx.fill()

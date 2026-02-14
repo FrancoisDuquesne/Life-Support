@@ -10,12 +10,11 @@ export const BUILDING_COLORS = {
   OXYGEN_GENERATOR: { fill: '#06b6d4', accent: '#22d3ee' },
   RTG: { fill: '#a855f7', accent: '#c084fc' },
   RECYCLING_CENTER: { fill: '#84cc16', accent: '#a3e635' },
-  REPAIR_STATION: { fill: '#ef4444', accent: '#f87171' },
   PIPELINE: { fill: '#94a3b8', accent: '#e2e8f0' },
   MDV_LANDING_SITE: { fill: '#64748b', accent: '#e2e8f0' },
-  RESEARCH_LAB: { fill: '#a855f7', accent: '#c084fc' },
+  RESEARCH_LAB: { fill: '#ec4899', accent: '#f472b6' },
   DEFENSE_TURRET: { fill: '#dc2626', accent: '#f87171' },
-  RADAR_STATION: { fill: '#16a34a', accent: '#4ade80' },
+  RADAR_STATION: { fill: '#eab308', accent: '#facc15' },
 }
 
 // Pre-generated caches
@@ -540,33 +539,79 @@ export function drawDisabledBuilding(ctx, cx, cy, hexS) {
 }
 
 /**
- * Draw an HP bar below a building on the map.
+ * Draw level-based visual decorations around a building.
+ * Called after the main building shape, before ctx.restore().
  */
-export function drawHPBar(ctx, cx, cy, hexS, hp, maxHp) {
-  const pct = Math.max(0, Math.min(1, hp / maxHp))
-  if (pct >= 0.99) return // Don't show bar at full HP
-  const barW = hexS * 0.9
-  const barH = hexS * 0.12
-  const barX = cx - barW / 2
-  const barY = cy + hexS * 0.45
-  // Background
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-  ctx.fillRect(barX, barY, barW, barH)
-  // Fill — green > yellow > red
-  let color
-  if (pct > 0.6) color = '#22c55e'
-  else if (pct > 0.3) color = '#eab308'
-  else color = '#ef4444'
-  ctx.fillStyle = color
-  ctx.fillRect(barX, barY, barW * pct, barH)
-  // Border
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'
-  ctx.lineWidth = 0.5
-  ctx.strokeRect(barX, barY, barW, barH)
+function drawLevelDecorations(ctx, cx, cy, r, level, colors) {
+  if (level <= 1) return
+
+  if (level >= 2) {
+    // Level 2: Subtle glow ring (accent color, 35% opacity)
+    ctx.strokeStyle = colors.accent
+    ctx.globalAlpha = 0.35
+    ctx.lineWidth = Math.max(1.2, r * 0.08)
+    ctx.beginPath()
+    ctx.arc(cx, cy, r * 1.15, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.globalAlpha = 1
+  }
+
+  if (level >= 3) {
+    // Level 3: Four small detail modules at diagonal corners
+    const modDist = r * 1.0
+    const modSize = r * 0.14
+    ctx.fillStyle = '#ecf2f9'
+    ctx.strokeStyle = '#8fa2b6'
+    ctx.lineWidth = 0.8
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 4 + (Math.PI / 2) * i
+      const mx = cx + Math.cos(a) * modDist
+      const my = cy + Math.sin(a) * modDist
+      ctx.fillRect(mx - modSize, my - modSize, modSize * 2, modSize * 2)
+      ctx.strokeRect(mx - modSize, my - modSize, modSize * 2, modSize * 2)
+    }
+  }
+
+  if (level >= 4) {
+    // Level 4: Enhanced outer glow ring (fill color, 45% opacity, thicker)
+    ctx.strokeStyle = colors.fill
+    ctx.globalAlpha = 0.45
+    ctx.lineWidth = Math.max(2, r * 0.12)
+    ctx.beginPath()
+    ctx.arc(cx, cy, r * 1.25, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.globalAlpha = 1
+  }
+
+  if (level >= 5) {
+    // Level 5: Radial gradient halo + 6 orbiting accent dots
+    const haloR = r * 1.35
+    const grad = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, haloR)
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0)')
+    grad.addColorStop(0.5, colors.accent + '33')
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(cx, cy, haloR, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.fillStyle = colors.accent
+    ctx.globalAlpha = 0.7
+    const dotR = r * 0.08
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i
+      const dx = cx + Math.cos(a) * r * 1.3
+      const dy = cy + Math.sin(a) * r * 1.3
+      ctx.beginPath()
+      ctx.arc(dx, dy, dotR, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.globalAlpha = 1
+  }
 }
 
 // Distinct building shapes — center-relative drawing
-export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
+export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0, level = 1) {
   const colors = BUILDING_COLORS[type] || { fill: '#888', accent: '#aaa' }
   const cx = x + size / 2
   const cy = y + size / 2
@@ -776,23 +821,49 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
     }
 
     case 'OXYGEN_GENERATOR': {
-      const rr = r * 0.42
-      const points = [
-        [cx - r * 0.52, cy],
-        [cx + r * 0.52, cy],
-        [cx, cy - r * 0.52],
-      ]
-      for (const [px, py] of points) {
-        ctx.fillStyle = hull
+      // Vertical tank with exhaust vents at top
+      const tankW = r * 0.8
+      const tankH = r * 1.6
+      const tankX = cx - tankW / 2
+      const tankY = cy - tankH / 2
+      const tankR = tankW * 0.4
+
+      // Tank body (rounded rectangle)
+      ctx.fillStyle = hull
+      ctx.beginPath()
+      ctx.moveTo(tankX + tankR, tankY)
+      ctx.lineTo(tankX + tankW - tankR, tankY)
+      ctx.arc(tankX + tankW - tankR, tankY + tankR, tankR, -Math.PI / 2, 0)
+      ctx.lineTo(tankX + tankW, tankY + tankH - tankR)
+      ctx.arc(tankX + tankW - tankR, tankY + tankH - tankR, tankR, 0, Math.PI / 2)
+      ctx.lineTo(tankX + tankR, tankY + tankH)
+      ctx.arc(tankX + tankR, tankY + tankH - tankR, tankR, Math.PI / 2, Math.PI)
+      ctx.lineTo(tankX, tankY + tankR)
+      ctx.arc(tankX + tankR, tankY + tankR, tankR, Math.PI, -Math.PI / 2)
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = hullLine
+      ctx.lineWidth = 1.1
+      ctx.stroke()
+
+      // Cyan accent core (inner tank)
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(cx, cy + r * 0.1, r * 0.28, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Three small vent circles at top
+      for (let i = -1; i <= 1; i++) {
+        ctx.fillStyle = hullShadow
         ctx.beginPath()
-        ctx.arc(px, py, rr, 0, Math.PI * 2)
+        ctx.arc(cx + i * r * 0.3, tankY + r * 0.18, r * 0.12, 0, Math.PI * 2)
         ctx.fill()
         ctx.strokeStyle = hullLine
-        ctx.lineWidth = 1
+        ctx.lineWidth = 0.8
         ctx.stroke()
         ctx.fillStyle = colors.accent
         ctx.beginPath()
-        ctx.arc(px, py, rr * 0.32, 0, Math.PI * 2)
+        ctx.arc(cx + i * r * 0.3, tankY + r * 0.18, r * 0.05, 0, Math.PI * 2)
         ctx.fill()
       }
       break
@@ -838,14 +909,40 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
         [cx + orbit * 0.86, cy + orbit * 0.5],
         [cx - orbit * 0.86, cy + orbit * 0.5],
       ]
-      ctx.strokeStyle = hull
-      ctx.lineWidth = Math.max(3, r * 0.16)
-      ctx.beginPath()
-      ctx.moveTo(points[0][0], points[0][1])
-      ctx.lineTo(points[1][0], points[1][1])
-      ctx.lineTo(points[2][0], points[2][1])
-      ctx.closePath()
-      ctx.stroke()
+      // Curved arrow arcs between pods (recycling symbol)
+      ctx.strokeStyle = colors.accent
+      ctx.lineWidth = Math.max(2, r * 0.1)
+      ctx.lineCap = 'round'
+      for (let i = 0; i < 3; i++) {
+        const from = points[i]
+        const to = points[(i + 1) % 3]
+        const mx = (from[0] + to[0]) / 2
+        const my = (from[1] + to[1]) / 2
+        // Curve control point pulls toward center
+        const cpx = mx + (cx - mx) * 0.6
+        const cpy = my + (cy - my) * 0.6
+        ctx.beginPath()
+        ctx.moveTo(from[0], from[1])
+        ctx.quadraticCurveTo(cpx, cpy, to[0], to[1])
+        ctx.stroke()
+        // Arrowhead at destination
+        const dx = to[0] - cpx
+        const dy = to[1] - cpy
+        const angle = Math.atan2(dy, dx)
+        const headLen = r * 0.18
+        ctx.beginPath()
+        ctx.moveTo(to[0], to[1])
+        ctx.lineTo(
+          to[0] - headLen * Math.cos(angle - 0.4),
+          to[1] - headLen * Math.sin(angle - 0.4),
+        )
+        ctx.moveTo(to[0], to[1])
+        ctx.lineTo(
+          to[0] - headLen * Math.cos(angle + 0.4),
+          to[1] - headLen * Math.sin(angle + 0.4),
+        )
+        ctx.stroke()
+      }
       for (const [px, py] of points) {
         ctx.fillStyle = hull
         ctx.beginPath()
@@ -859,7 +956,7 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
         ctx.arc(px, py, podR * 0.28, 0, Math.PI * 2)
         ctx.fill()
       }
-      // Central hub dot (matches footprint version)
+      // Central hub dot
       ctx.fillStyle = '#e2e8f0'
       ctx.beginPath()
       ctx.arc(cx, cy, podR * 0.32, 0, Math.PI * 2)
@@ -890,46 +987,15 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
       break
     }
 
-    case 'REPAIR_STATION': {
-      ctx.fillStyle = hullShadow
-      ctx.beginPath()
-      for (let i = 0; i < 6; i++) {
-        const a = Math.PI / 6 + i * (Math.PI / 3)
-        const vx = cx + r * 0.96 * Math.cos(a)
-        const vy = cy + r * 0.96 * Math.sin(a)
-        if (i === 0) ctx.moveTo(vx, vy)
-        else ctx.lineTo(vx, vy)
-      }
-      ctx.closePath()
-      ctx.fill()
-      ctx.strokeStyle = hullLine
-      ctx.lineWidth = 1.2
-      ctx.stroke()
-
-      ctx.fillStyle = colors.accent
-      ctx.beginPath()
-      ctx.arc(cx, cy, r * 0.26, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = '#ffffff'
-      ctx.lineWidth = 1.4
-      ctx.beginPath()
-      ctx.moveTo(cx - r * 0.14, cy)
-      ctx.lineTo(cx + r * 0.14, cy)
-      ctx.moveTo(cx, cy - r * 0.14)
-      ctx.lineTo(cx, cy + r * 0.14)
-      ctx.stroke()
-      break
-    }
-
     case 'RESEARCH_LAB': {
-      // Purple dome with antenna
+      // Pink dome with antenna
       const domeR = r * 0.92
-      ctx.fillStyle = '#ddd6fe'
+      ctx.fillStyle = '#fce7f3'
       ctx.beginPath()
       ctx.arc(cx, cy + r * 0.08, domeR, Math.PI, 0)
       ctx.closePath()
       ctx.fill()
-      ctx.strokeStyle = '#7c3aed'
+      ctx.strokeStyle = '#db2777'
       ctx.lineWidth = 1.2
       ctx.stroke()
       // Dome base
@@ -944,13 +1010,13 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
       ctx.arc(cx, cy - r * 0.1, domeR * 0.35, 0, Math.PI * 2)
       ctx.fill()
       // Antenna
-      ctx.strokeStyle = '#6d28d9'
+      ctx.strokeStyle = '#be185d'
       ctx.lineWidth = 1.5
       ctx.beginPath()
       ctx.moveTo(cx + r * 0.3, cy - domeR * 0.6)
       ctx.lineTo(cx + r * 0.3, cy - domeR * 1.1)
       ctx.stroke()
-      ctx.fillStyle = '#c084fc'
+      ctx.fillStyle = '#f472b6'
       ctx.beginPath()
       ctx.arc(cx + r * 0.3, cy - domeR * 1.1, r * 0.1, 0, Math.PI * 2)
       ctx.fill()
@@ -997,7 +1063,7 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
     }
 
     case 'RADAR_STATION': {
-      // Base pedestal + dish
+      // Base pedestal + dish (yellow palette)
       const baseW = r * 0.5
       const baseH = r * 0.7
       ctx.fillStyle = hull
@@ -1006,12 +1072,12 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
       ctx.lineWidth = 1
       ctx.strokeRect(cx - baseW / 2, cy, baseW, baseH)
       // Dish (parabolic arc)
-      ctx.fillStyle = '#bbf7d0'
+      ctx.fillStyle = '#fef9c3'
       ctx.beginPath()
       ctx.ellipse(cx, cy - r * 0.05, r * 0.85, r * 0.5, 0, Math.PI + 0.3, -0.3)
       ctx.closePath()
       ctx.fill()
-      ctx.strokeStyle = '#15803d'
+      ctx.strokeStyle = '#a16207'
       ctx.lineWidth = 1.2
       ctx.stroke()
       // Feed horn (small circle at focus)
@@ -1128,6 +1194,7 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0) {
       drawHullPanel(x + size * 0.15, y + size * 0.15, size * 0.7, size * 0.7)
     }
   }
+  drawLevelDecorations(ctx, cx, cy, r, level, colors)
   ctx.restore()
 }
 
@@ -1141,6 +1208,7 @@ export function drawFootprintBuilding(
   oy,
   hexS,
   alpha,
+  level = 1,
 ) {
   if (!cells || cells.length <= 1) return false
   const colors = BUILDING_COLORS[type] || { fill: '#888', accent: '#aaa' }
@@ -1220,6 +1288,7 @@ export function drawFootprintBuilding(
       drillSize,
     )
 
+    drawLevelDecorations(ctx, cx, cy, hexS * 0.4, level, colors)
     ctx.restore()
     return true
   }
@@ -1269,6 +1338,7 @@ export function drawFootprintBuilding(
         podR * 0.24,
       )
     }
+    drawLevelDecorations(ctx, cx, cy, hexS * 0.4, level, colors)
     ctx.restore()
     return true
   }
@@ -1307,6 +1377,7 @@ export function drawFootprintBuilding(
     ctx.fill()
     ctx.strokeStyle = '#8fa2b6'
     ctx.stroke()
+    drawLevelDecorations(ctx, cx, cy, hexS * 0.4, level, colors)
     ctx.restore()
     return true
   }

@@ -209,7 +209,7 @@ const ROLE_LIST = Object.keys(ROLES)
 
 // Which buildings each role boosts (+10% per colonist with that role)
 const ROLE_BUILDING_MAP = {
-  ENGINEER: ['SOLAR_PANEL', 'RTG', 'REPAIR_STATION', 'RESEARCH_LAB'],
+  ENGINEER: ['SOLAR_PANEL', 'RTG', 'RESEARCH_LAB'],
   BOTANIST: ['HYDROPONIC_FARM', 'OXYGEN_GENERATOR'],
   GEOLOGIST: ['MINE', 'WATER_EXTRACTOR'],
   MEDIC: [], // heals colonists, no building boost
