@@ -4,7 +4,7 @@ import { mulberry32 } from '~/utils/hex'
 import { getFootprintCellsForType } from '~/utils/gameEngine'
 
 const SAVE_KEY = 'life-support-save'
-const SAVE_VERSION = 9
+const SAVE_VERSION = 10
 
 function normalizePlacedBuilding(pb) {
   const fallbackCells = getFootprintCellsForType(pb.type, pb.x, pb.y)
@@ -28,43 +28,52 @@ function normalizePlacedBuilding(pb) {
   }
 }
 
+function serializeColonyState(state) {
+  return {
+    name: state.name,
+    resources: state.resources,
+    buildings: state.buildings,
+    placedBuildings: state.placedBuildings.map(normalizePlacedBuilding),
+    nextBuildingId: state.nextBuildingId,
+    colonists: (state.colonists || []).map((c) => ({ ...c })),
+    nextColonistId: state.nextColonistId || 1,
+    populationCapacity: state.populationCapacity,
+    tickCount: state.tickCount,
+    alive: state.alive,
+    terrainSeed: state.terrainSeed,
+    activeEvents: state.activeEvents || [],
+    nextEventId: state.nextEventId || 1,
+    lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
+    colonistUnits: (state.colonistUnits || []).map((u) => ({
+      colonistId: u.colonistId,
+      x: u.x,
+      y: u.y,
+      targetX: u.targetX ?? null,
+      targetY: u.targetY ?? null,
+    })),
+    missions: state.missions || [],
+    nextMissionId: state.nextMissionId || 1,
+    completedMissions: state.completedMissions || [],
+    defenseRating: state.defenseRating || 0,
+    alienThreatLevel: state.alienThreatLevel || 0,
+    alienEvents: state.alienEvents || [],
+    unlockedTechs: state.unlockedTechs || [],
+  }
+}
+
 /**
  * Persist colony state and revealed tiles to localStorage.
+ * In competitive mode, also saves AI faction states.
  */
-export function saveGame(state, revealedTiles) {
+export function saveGame(state, revealedTiles, mode = 'solo', aiFactions = []) {
   const data = {
     v: SAVE_VERSION,
-    state: {
-      name: state.name,
-      resources: state.resources,
-      buildings: state.buildings,
-      placedBuildings: state.placedBuildings.map(normalizePlacedBuilding),
-      nextBuildingId: state.nextBuildingId,
-      colonists: (state.colonists || []).map((c) => ({ ...c })),
-      nextColonistId: state.nextColonistId || 1,
-      populationCapacity: state.populationCapacity,
-      tickCount: state.tickCount,
-      alive: state.alive,
-      terrainSeed: state.terrainSeed,
-      activeEvents: state.activeEvents || [],
-      nextEventId: state.nextEventId || 1,
-      lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
-      colonistUnits: (state.colonistUnits || []).map((u) => ({
-        colonistId: u.colonistId,
-        x: u.x,
-        y: u.y,
-        targetX: u.targetX ?? null,
-        targetY: u.targetY ?? null,
-      })),
-      missions: state.missions || [],
-      nextMissionId: state.nextMissionId || 1,
-      completedMissions: state.completedMissions || [],
-      defenseRating: state.defenseRating || 0,
-      alienThreatLevel: state.alienThreatLevel || 0,
-      alienEvents: state.alienEvents || [],
-      unlockedTechs: state.unlockedTechs || [],
-    },
+    mode,
+    state: serializeColonyState(state),
     revealedTiles: Array.from(revealedTiles),
+  }
+  if (mode === 'competitive' && aiFactions.length > 0) {
+    data.aiFactions = aiFactions.map(serializeColonyState)
   }
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(data))
@@ -274,8 +283,62 @@ function migrateV8toV9(data) {
 }
 
 /**
+ * Migrate v9 saves to v10 (competitive mode support).
+ */
+function migrateV9toV10(data) {
+  data.mode = 'solo'
+  data.v = 10
+  return data
+}
+
+function deserializeColonyState(s) {
+  const placedBuildings = (s.placedBuildings || []).map(normalizePlacedBuilding)
+
+  // Rebuild occupiedCells Set from placedBuildings
+  const occupiedCells = new Set()
+  for (const pb of placedBuildings) {
+    for (const cell of pb.cells) {
+      occupiedCells.add(cell.x + ',' + cell.y)
+    }
+  }
+
+  return {
+    name: s.name,
+    resources: s.resources,
+    buildings: s.buildings,
+    placedBuildings,
+    occupiedCells,
+    nextBuildingId: s.nextBuildingId,
+    colonists: s.colonists || [],
+    nextColonistId: s.nextColonistId || 1,
+    populationCapacity: s.populationCapacity,
+    tickCount: s.tickCount,
+    alive: s.alive,
+    terrainSeed: s.terrainSeed,
+    activeEvents: s.activeEvents || [],
+    nextEventId: s.nextEventId || 1,
+    lastColonistArrivalTick: s.lastColonistArrivalTick || 0,
+    colonistUnits: (s.colonistUnits || []).map((u) => ({
+      colonistId: u.colonistId,
+      x: u.x,
+      y: u.y,
+      targetX: u.targetX ?? null,
+      targetY: u.targetY ?? null,
+      path: [],
+    })),
+    missions: s.missions || [],
+    nextMissionId: s.nextMissionId || 1,
+    completedMissions: s.completedMissions || [],
+    defenseRating: s.defenseRating || 0,
+    alienThreatLevel: s.alienThreatLevel || 0,
+    alienEvents: s.alienEvents || [],
+    unlockedTechs: s.unlockedTechs || [],
+  }
+}
+
+/**
  * Load saved game from localStorage.
- * Returns { state, revealedTiles } or null if no save / incompatible version.
+ * Returns { state, revealedTiles, mode, aiFactions? } or null.
  */
 export function loadGame() {
   try {
@@ -292,57 +355,22 @@ export function loadGame() {
     if (data.v === 6) data = migrateV6toV7(data)
     if (data.v === 7) data = migrateV7toV8(data)
     if (data.v === 8) data = migrateV8toV9(data)
+    if (data.v === 9) data = migrateV9toV10(data)
 
     if (data.v !== SAVE_VERSION) return null
 
-    const s = data.state
-    const placedBuildings = (s.placedBuildings || []).map(
-      normalizePlacedBuilding,
-    )
-
-    // Rebuild occupiedCells Set from placedBuildings
-    const occupiedCells = new Set()
-    for (const pb of placedBuildings) {
-      for (const cell of pb.cells) {
-        occupiedCells.add(cell.x + ',' + cell.y)
-      }
-    }
-
-    const state = {
-      name: s.name,
-      resources: s.resources,
-      buildings: s.buildings,
-      placedBuildings,
-      occupiedCells,
-      nextBuildingId: s.nextBuildingId,
-      colonists: s.colonists || [],
-      nextColonistId: s.nextColonistId || 1,
-      populationCapacity: s.populationCapacity,
-      tickCount: s.tickCount,
-      alive: s.alive,
-      terrainSeed: s.terrainSeed,
-      activeEvents: s.activeEvents || [],
-      nextEventId: s.nextEventId || 1,
-      lastColonistArrivalTick: s.lastColonistArrivalTick || 0,
-      colonistUnits: (s.colonistUnits || []).map((u) => ({
-        colonistId: u.colonistId,
-        x: u.x,
-        y: u.y,
-        targetX: u.targetX ?? null,
-        targetY: u.targetY ?? null,
-        path: [],
-      })),
-      missions: s.missions || [],
-      nextMissionId: s.nextMissionId || 1,
-      completedMissions: s.completedMissions || [],
-      defenseRating: s.defenseRating || 0,
-      alienThreatLevel: s.alienThreatLevel || 0,
-      alienEvents: s.alienEvents || [],
-      unlockedTechs: s.unlockedTechs || [],
-    }
-
+    const state = deserializeColonyState(data.state)
     const revealedTiles = new Set(data.revealedTiles)
-    return { state, revealedTiles }
+    const mode = data.mode || 'solo'
+
+    const result = { state, revealedTiles, mode }
+
+    // Restore AI factions in competitive mode
+    if (mode === 'competitive' && Array.isArray(data.aiFactions)) {
+      result.aiFactions = data.aiFactions.map(deserializeColonyState)
+    }
+
+    return result
   } catch (_) {
     return null
   }

@@ -13,6 +13,7 @@ import {
   setColonistTarget,
   getBaseAnchors as engineGetBaseAnchors,
   countBuildingsForBase as engineCountBuildingsForBase,
+  computeTerritoryMap as engineComputeTerritory,
   GRID_WIDTH,
   GRID_HEIGHT,
 } from '~/utils/gameEngine'
@@ -33,6 +34,7 @@ import {
   getTerrainAt,
 } from '~/utils/terrain'
 import { clearDrawingCaches } from '~/utils/drawing'
+import { planAITurn } from '~/utils/aiEngine'
 
 export function useColony() {
   const DEV_MODE_ALLOWED = import.meta.dev
@@ -57,6 +59,26 @@ export function useColony() {
   // Internal mutable colony (not the reactive snapshot)
   let colony = null
   let tickTimer = null
+
+  // --- Competitive mode state ---
+  const FACTION_DEFS = [
+    { id: 'player', name: 'Red Colony', color: '#dc2626', isAI: false },
+    { id: 'blue', name: 'Blue Colony', color: '#3b82f6', isAI: true },
+    { id: 'green', name: 'Green Colony', color: '#22c55e', isAI: true },
+  ]
+  const FACTION_STARTS = [
+    { targetX: null, targetY: null }, // player — center (default)
+    { targetX: 10, targetY: 10 }, // blue — top-left corner
+    { targetX: 54, targetY: 54 }, // green — bottom-right corner
+  ]
+  const VICTORY_TICK = 200
+  const DOMINATION_THRESHOLD = 0.7
+  const gameMode = ref('solo') // 'solo' | 'competitive'
+  let aiFactions = [] // mutable colony states for AI factions
+  const aiFactionSnapshots = ref([]) // reactive snapshots for UI
+  const territoryMap = ref(new Map()) // Map<"x,y", factionId>
+  const isGameOver = ref(false)
+  const winner = ref(null)
 
   // Revealed tiles state
   const revealedTiles = ref(new Set())
@@ -246,9 +268,26 @@ export function useColony() {
       isNewGame.value = false
       colony = saved.state
       revealedTiles.value = saved.revealedTiles
+      gameMode.value = saved.mode || 'solo'
       const terrainOk = generateTerrain(colony.terrainSeed)
       state.value = toSnapshot(colony)
       pushHistory(state.value)
+
+      // Restore AI factions in competitive mode
+      if (saved.mode === 'competitive' && saved.aiFactions) {
+        aiFactions = saved.aiFactions
+        aiFactionSnapshots.value = aiFactions.map((ai) => toSnapshot(ai))
+        // Recompute territory
+        const allFactions = [
+          { id: 'player', placedBuildings: colony.placedBuildings },
+          ...aiFactions.map((ai, i) => ({
+            id: FACTION_DEFS[i + 1].id,
+            placedBuildings: ai.placedBuildings,
+          })),
+        ]
+        territoryMap.value = engineComputeTerritory(allFactions)
+      }
+
       addLog(colony.tickCount, 'Colony restored from save.')
       if (!terrainOk) {
         addLog(
@@ -297,7 +336,7 @@ export function useColony() {
   }
 
   function trySave() {
-    const ok = saveGame(colony, revealedTiles.value)
+    const ok = saveGame(colony, revealedTiles.value, gameMode.value, aiFactions)
     if (!ok) {
       addLog(
         colony?.tickCount ?? null,
@@ -306,28 +345,239 @@ export function useColony() {
     }
   }
 
+  /**
+   * Build a Set of all globally occupied cell keys across all factions.
+   */
+  function buildGlobalOccupied() {
+    const global = new Set()
+    if (colony) {
+      for (const key of colony.occupiedCells) global.add(key)
+    }
+    for (const ai of aiFactions) {
+      for (const key of ai.occupiedCells) global.add(key)
+    }
+    return global
+  }
+
   function doTick() {
     if (!colony) return
-    const result = engineTick(colony, terrainMap.value, revealedTiles.value)
-    state.value = result.colonyState
-    pushHistory(result.colonyState)
-    if (result.events) addLog(result.tick, result.events)
 
-    // Apply discovered tiles from events
-    if (result.newRevealedTiles && result.newRevealedTiles.length > 0) {
+    // --- Solo mode: existing behavior ---
+    if (gameMode.value !== 'competitive') {
+      const result = engineTick(colony, terrainMap.value, revealedTiles.value)
+      state.value = result.colonyState
+      pushHistory(result.colonyState)
+      if (result.events) addLog(result.tick, result.events)
+
+      if (result.newRevealedTiles && result.newRevealedTiles.length > 0) {
+        const newSet = new Set(revealedTiles.value)
+        for (const key of result.newRevealedTiles) {
+          newSet.add(key)
+        }
+        revealedTiles.value = newSet
+      }
+
+      trySave()
+      return
+    }
+
+    // --- Competitive mode ---
+    if (isGameOver.value) return
+
+    // 1. Process player tick
+    const playerResult = engineTick(
+      colony,
+      terrainMap.value,
+      revealedTiles.value,
+    )
+    state.value = playerResult.colonyState
+    pushHistory(playerResult.colonyState)
+    if (playerResult.events) addLog(playerResult.tick, playerResult.events)
+
+    if (
+      playerResult.newRevealedTiles &&
+      playerResult.newRevealedTiles.length > 0
+    ) {
       const newSet = new Set(revealedTiles.value)
-      for (const key of result.newRevealedTiles) {
+      for (const key of playerResult.newRevealedTiles) {
         newSet.add(key)
       }
       revealedTiles.value = newSet
     }
 
+    // 2. Process AI factions
+    const globalOccupied = buildGlobalOccupied()
+    const snapshots = []
+    for (const ai of aiFactions) {
+      if (!ai.alive) {
+        snapshots.push(toSnapshot(ai))
+        continue
+      }
+
+      // AI builds
+      const actions = planAITurn(ai, terrainMap.value, globalOccupied)
+      for (const action of actions) {
+        if (action.action === 'build') {
+          engineBuild(ai, action.type, action.x, action.y, terrainMap.value, {
+            globalOccupied,
+          })
+          // Update globalOccupied with new cells
+          for (const key of ai.occupiedCells) globalOccupied.add(key)
+        }
+      }
+
+      // AI tick
+      const allRevealed = new Set()
+      for (let r = 0; r < GRID_HEIGHT; r++)
+        for (let c = 0; c < GRID_WIDTH; c++) allRevealed.add(c + ',' + r)
+      engineTick(ai, terrainMap.value, allRevealed)
+      snapshots.push(toSnapshot(ai))
+    }
+    aiFactionSnapshots.value = snapshots
+
+    // 3. Recompute territory
+    const allFactions = [
+      { id: 'player', placedBuildings: colony.placedBuildings },
+      ...aiFactions.map((ai, i) => ({
+        id: FACTION_DEFS[i + 1].id,
+        placedBuildings: ai.placedBuildings,
+      })),
+    ]
+    territoryMap.value = engineComputeTerritory(allFactions)
+
+    // 4. Check victory conditions
+    checkVictory()
+
     trySave()
   }
 
+  /**
+   * Compute score for a faction given its snapshot state.
+   */
+  function computeScore(snap, factionId) {
+    const buildingCount = (snap.placedBuildings || []).filter(
+      (b) => !b.isUnderConstruction,
+    ).length
+    const pop = snap.population || 0
+    const research = snap.resources?.research || 0
+
+    // Count territory hexes
+    let territoryHexes = 0
+    if (territoryMap.value) {
+      for (const owner of territoryMap.value.values()) {
+        if (owner === factionId) territoryHexes++
+      }
+    }
+
+    return territoryHexes * 2 + pop * 10 + buildingCount * 5 + research
+  }
+
+  const factionScores = computed(() => {
+    if (gameMode.value !== 'competitive') return []
+    const scores = []
+    if (state.value) {
+      scores.push({
+        ...FACTION_DEFS[0],
+        score: computeScore(state.value, 'player'),
+        population: state.value.population || 0,
+        buildings: (state.value.placedBuildings || []).filter(
+          (b) => !b.isUnderConstruction,
+        ).length,
+        territoryHexes: countTerritory('player'),
+        alive: state.value.alive,
+      })
+    }
+    for (let i = 0; i < aiFactionSnapshots.value.length; i++) {
+      const snap = aiFactionSnapshots.value[i]
+      const def = FACTION_DEFS[i + 1]
+      scores.push({
+        ...def,
+        score: computeScore(snap, def.id),
+        population: snap.population || 0,
+        buildings: (snap.placedBuildings || []).filter(
+          (b) => !b.isUnderConstruction,
+        ).length,
+        territoryHexes: countTerritory(def.id),
+        alive: snap.alive,
+      })
+    }
+    return scores.sort((a, b) => b.score - a.score)
+  })
+
+  function countTerritory(factionId) {
+    let count = 0
+    if (territoryMap.value) {
+      for (const owner of territoryMap.value.values()) {
+        if (owner === factionId) count++
+      }
+    }
+    return count
+  }
+
+  function checkVictory() {
+    if (isGameOver.value) return
+    const tick = colony?.tickCount || 0
+
+    // Domination check: any faction with 70%+ of total territory
+    const totalTerritory = territoryMap.value.size
+    if (totalTerritory > 0) {
+      for (const def of FACTION_DEFS) {
+        const count = countTerritory(def.id)
+        if (count / totalTerritory >= DOMINATION_THRESHOLD) {
+          isGameOver.value = true
+          winner.value = def
+          addLog(tick, `VICTORY: ${def.name} achieved domination!`)
+          return
+        }
+      }
+    }
+
+    // Tick limit
+    if (tick >= VICTORY_TICK) {
+      isGameOver.value = true
+      // Find highest score
+      const scores = factionScores.value
+      if (scores.length > 0) {
+        winner.value = scores[0]
+        addLog(
+          tick,
+          `GAME OVER: ${scores[0].name} wins with score ${scores[0].score}!`,
+        )
+      }
+    }
+  }
+
+  /**
+   * Get all faction buildings for rendering (includes AI buildings).
+   */
+  const allFactionBuildings = computed(() => {
+    if (gameMode.value !== 'competitive') return []
+    const result = []
+    for (let i = 0; i < aiFactionSnapshots.value.length; i++) {
+      const snap = aiFactionSnapshots.value[i]
+      const def = FACTION_DEFS[i + 1]
+      for (const b of snap.placedBuildings || []) {
+        result.push({ ...b, factionId: def.id, factionColor: def.color })
+      }
+    }
+    return result
+  })
+
+  const factionColors = computed(() => {
+    const map = {}
+    for (const def of FACTION_DEFS) {
+      map[def.id] = def.color
+    }
+    return map
+  })
+
   function buildAt(type, x, y) {
     if (!colony) return { success: false, message: 'Colony not initialized' }
-    const result = engineBuild(colony, type, x, y, terrainMap.value)
+    const opts =
+      gameMode.value === 'competitive'
+        ? { globalOccupied: buildGlobalOccupied() }
+        : {}
+    const result = engineBuild(colony, type, x, y, terrainMap.value, opts)
     state.value = result.colonyState
     addLog(state.value ? state.value.tickCount : null, result.message)
     if (result.success) {
@@ -395,13 +645,22 @@ export function useColony() {
     return result
   }
 
-  function resetColony() {
+  function resetColony(mode = 'solo') {
     isNewGame.value = true
     clearSave()
     clearTerrainCache()
     clearDrawingCaches()
     const terrainSeed = Math.floor(Math.random() * 2147483647)
     const terrainOk = generateTerrain(terrainSeed)
+
+    // Reset competitive state
+    gameMode.value = mode
+    aiFactions = []
+    aiFactionSnapshots.value = []
+    territoryMap.value = new Map()
+    isGameOver.value = false
+    winner.value = null
+
     colony = createColonyState({
       terrainSeed,
       terrainMap: terrainMap.value,
@@ -411,17 +670,42 @@ export function useColony() {
     eventLog.value = []
     resourceHistory.value = []
     pushHistory(state.value)
-    addLog(
-      0,
-      devModeEnabled.value
-        ? 'Developer preset loaded: balanced starter colony.'
-        : 'Colony has been reset.',
-    )
+
+    if (mode === 'competitive') {
+      initCompetitiveFactions(terrainSeed)
+      addLog(0, 'Competitive mode: 3 factions on the map. Dominate or score!')
+    } else {
+      addLog(
+        0,
+        devModeEnabled.value
+          ? 'Developer preset loaded: balanced starter colony.'
+          : 'Colony has been reset.',
+      )
+    }
     if (!terrainOk) {
       addLog(0, 'WARNING: Terrain generation failed, using fallback tiles.')
     }
     initRevealedMap()
     startTickTimer()
+  }
+
+  function initCompetitiveFactions(terrainSeed) {
+    aiFactions = []
+    const snapshots = []
+    for (let i = 1; i < FACTION_DEFS.length; i++) {
+      const def = FACTION_DEFS[i]
+      const start = FACTION_STARTS[i]
+      const ai = createColonyState({
+        terrainSeed,
+        terrainMap: terrainMap.value,
+        startX: start.targetX,
+        startY: start.targetY,
+      })
+      ai.name = def.name
+      aiFactions.push(ai)
+      snapshots.push(toSnapshot(ai))
+    }
+    aiFactionSnapshots.value = snapshots
   }
 
   function pushHistory(cs) {
@@ -582,6 +866,16 @@ export function useColony() {
     tickSpeed,
     devModeAllowed: DEV_MODE_ALLOWED,
     devModeEnabled,
+    // Competitive mode
+    gameMode,
+    aiFactionSnapshots,
+    territoryMap,
+    factionScores,
+    allFactionBuildings,
+    factionColors,
+    isGameOver,
+    winner,
+    FACTION_DEFS,
     init,
     buildAt,
     upgradeBuildingAt,

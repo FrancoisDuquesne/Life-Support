@@ -857,11 +857,12 @@ function getPopulation(state) {
 }
 
 /**
- * Find optimal landing site for MDV - closest plains tile to center without hazards.
+ * Find optimal landing site for MDV - closest plains tile to target without hazards.
+ * If targetX/targetY provided, search near that position; otherwise search near center.
  */
-function findLandingSite(terrainMap) {
-  const centerX = Math.floor(GRID_WIDTH / 2)
-  const centerY = Math.floor(GRID_HEIGHT / 2)
+export function findLandingSite(terrainMap, targetX, targetY) {
+  const centerX = targetX ?? Math.floor(GRID_WIDTH / 2)
+  const centerY = targetY ?? Math.floor(GRID_HEIGHT / 2)
   if (!terrainMap || terrainMap.length === 0) {
     return { x: centerX, y: centerY }
   }
@@ -1022,7 +1023,11 @@ export function createColonyState(options = {}) {
     unlockedTechs: [],
   }
   state.colonists = createInitialColonists(state)
-  const landing = findLandingSite(options.terrainMap)
+  const landing = findLandingSite(
+    options.terrainMap,
+    options.startX,
+    options.startY,
+  )
   state.colonistUnits = state.colonists.map((c, idx) => ({
     colonistId: c.id,
     x: landing.x + (idx % 2),
@@ -1439,8 +1444,10 @@ export function processTick(state, terrainMap, revealedTiles) {
 /**
  * Attempt to build at (x, y). Returns { success, message, colonyState }.
  */
-export function buildAt(state, type, x, y, terrainMap) {
-  const validation = validateBuildPlacement(state, type, x, y, terrainMap)
+export function buildAt(state, type, x, y, terrainMap, options = {}) {
+  const validation = validateBuildPlacement(state, type, x, y, terrainMap, {
+    globalOccupied: options.globalOccupied,
+  })
   if (!validation.ok) {
     return {
       success: false,
@@ -1550,6 +1557,7 @@ export function validateBuildPlacement(
     }
   }
 
+  const globalOccupied = options.globalOccupied
   for (const cell of footprint) {
     if (
       cell.x < 0 ||
@@ -1566,6 +1574,16 @@ export function validateBuildPlacement(
       return {
         ok: false,
         message: `Cell (${cell.x},${cell.y}) is already occupied`,
+      }
+    }
+    // Cross-faction overlap check
+    if (globalOccupied) {
+      const key = cellKey(cell.x, cell.y)
+      if (globalOccupied.has(key) && !state.occupiedCells.has(key)) {
+        return {
+          ok: false,
+          message: `Cell (${cell.x},${cell.y}) is claimed by another faction`,
+        }
       }
     }
   }
@@ -1850,6 +1868,62 @@ export function toSnapshot(state) {
           )
         : 100,
   }
+}
+
+/**
+ * Compute territory map from multiple faction states.
+ * Each faction's completed buildings project influence in a 3-hex radius.
+ * Returns Map<"x,y", factionId> — ties broken by building count within 5 hexes.
+ */
+export function computeTerritoryMap(factions) {
+  const INFLUENCE_RADIUS = 3
+  const TIE_BREAK_RADIUS = 5
+  // Map<"x,y", Map<factionId, influenceCount>>
+  const influence = new Map()
+
+  for (const faction of factions) {
+    const factionId = faction.id
+    for (const pb of faction.placedBuildings || []) {
+      if (pb.isUnderConstruction) continue
+      const cells =
+        pb.cells && pb.cells.length > 0 ? pb.cells : [{ x: pb.x, y: pb.y }]
+      for (const cell of cells) {
+        const nearby = hexesInRadius(
+          cell.x,
+          cell.y,
+          INFLUENCE_RADIUS,
+          GRID_WIDTH,
+          GRID_HEIGHT,
+        )
+        for (const [hx, hy] of nearby) {
+          const key = hx + ',' + hy
+          if (!influence.has(key)) influence.set(key, new Map())
+          const fMap = influence.get(key)
+          fMap.set(factionId, (fMap.get(factionId) || 0) + 1)
+        }
+      }
+    }
+  }
+
+  const territory = new Map()
+  for (const [key, fMap] of influence) {
+    if (fMap.size === 1) {
+      territory.set(key, fMap.keys().next().value)
+      continue
+    }
+    // Multiple factions have influence — pick the one with the most
+    let bestFaction = null
+    let bestCount = -1
+    for (const [factionId, count] of fMap) {
+      if (count > bestCount) {
+        bestCount = count
+        bestFaction = factionId
+      }
+    }
+    if (bestFaction) territory.set(key, bestFaction)
+  }
+
+  return territory
 }
 
 /**

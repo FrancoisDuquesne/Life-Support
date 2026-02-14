@@ -24,6 +24,7 @@ const showEventLog = ref(false)
 const showMissionPanel = ref(false)
 const showTechTree = ref(false)
 const colonistsPanelRef = ref(null)
+const showGameModeDialog = ref(false)
 
 // Upgrade branch dialog state
 const upgradeBranchDialog = ref({
@@ -578,7 +579,16 @@ function onLaunchMission({ typeId, colonistIds }) {
 
 function resetFromCollapseModal() {
   showCollapseModal.value = false
-  colony.resetColony()
+  showGameModeDialog.value = true
+}
+
+function onResetWithMode(mode) {
+  showGameModeDialog.value = false
+  colony.resetColony(mode)
+}
+
+function onRequestReset() {
+  showGameModeDialog.value = true
 }
 
 const COLORBLIND_STORAGE_KEY = 'life-support-colorblind'
@@ -651,8 +661,8 @@ function handleKeyDown(e) {
 onMounted(() => {
   colony.init()
   window.addEventListener('keydown', handleKeyDown)
-  // Start tutorial for new games that haven't completed it
-  if (colony.isNewGame.value) {
+  // Start tutorial for new solo games that haven't completed it
+  if (colony.isNewGame.value && colony.gameMode.value !== 'competitive') {
     try {
       if (!localStorage.getItem(TUTORIAL_DONE_KEY)) {
         tutorialStep.value = 0
@@ -669,7 +679,7 @@ onUnmounted(() => {
   <div class="app-layout">
     <HeaderBar
       :state="colony.state.value"
-      :on-reset="colony.resetColony"
+      :on-reset="onRequestReset"
       :tick-speed="colony.tickSpeed.value"
       :on-set-speed="colony.setSpeed"
       :on-manual-tick="colony.manualTick"
@@ -792,6 +802,20 @@ onUnmounted(() => {
             @click="showTechTree = true"
           />
         </div>
+        <!-- Scoreboard (competitive mode) -->
+        <div
+          v-if="colony.gameMode.value === 'competitive'"
+          class="bg-default border-default rounded-md border p-1.5 shadow-xs"
+        >
+          <h4 class="mb-1 uppercase">Scoreboard</h4>
+          <Scoreboard
+            :scores="colony.factionScores.value"
+            :tick-count="colony.state.value?.tickCount || 0"
+            :victory-tick="200"
+            :is-game-over="colony.isGameOver.value"
+            :winner="colony.winner.value"
+          />
+        </div>
         <UButton
           color="neutral"
           variant="soft"
@@ -835,6 +859,10 @@ onUnmounted(() => {
           :active-events="colony.activeEvents.value"
           :buildable-cells="colony.buildableCells.value"
           :selected-colonist="interaction.selectedColonist.value"
+          :territory-map="colony.territoryMap.value"
+          :all-faction-buildings="colony.allFactionBuildings.value"
+          :faction-colors="colony.factionColors.value"
+          :game-mode="colony.gameMode.value"
         />
         <!-- Build placement status bar -->
         <UAlert
@@ -1247,6 +1275,95 @@ onUnmounted(() => {
         </div>
       </template>
     </UDrawer>
+
+    <!-- Game Mode Selection Dialog -->
+    <UModal
+      v-model:open="showGameModeDialog"
+      title="New Game"
+      :dismissible="false"
+    >
+      <template #body>
+        <div class="flex flex-col gap-3">
+          <p class="text-muted text-sm">Choose your game mode:</p>
+          <UButton
+            color="neutral"
+            variant="soft"
+            block
+            size="lg"
+            @click="onResetWithMode('solo')"
+          >
+            <template #leading>
+              <span class="text-lg">🏠</span>
+            </template>
+            <div class="text-left">
+              <div class="text-highlighted font-bold">Solo</div>
+              <div class="text-muted text-xs">
+                Classic survival sandbox — build and grow at your own pace
+              </div>
+            </div>
+          </UButton>
+          <UButton
+            color="primary"
+            variant="soft"
+            block
+            size="lg"
+            @click="onResetWithMode('competitive')"
+          >
+            <template #leading>
+              <span class="text-lg">⚔️</span>
+            </template>
+            <div class="text-left">
+              <div class="text-highlighted font-bold">Competitive</div>
+              <div class="text-muted text-xs">
+                Race against 2 AI colonies — highest score at tick 200 wins
+              </div>
+            </div>
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Victory/Defeat Modal (competitive mode) -->
+    <UModal
+      :open="colony.isGameOver.value && colony.gameMode.value === 'competitive'"
+      title="Game Over"
+      :dismissible="false"
+    >
+      <template #body>
+        <div class="flex flex-col items-center gap-3 text-center">
+          <div v-if="colony.winner.value" class="text-3xl">
+            {{ colony.winner.value.isAI === false ? '🏆' : '💀' }}
+          </div>
+          <div class="text-highlighted text-lg font-bold">
+            {{ colony.winner.value?.name || 'Unknown' }}
+            {{ colony.winner.value?.isAI === false ? 'Victory!' : 'Wins' }}
+          </div>
+          <div class="text-muted text-sm">
+            Final score: {{ colony.winner.value?.score || 0 }}
+          </div>
+          <!-- Final standings -->
+          <div class="w-full text-left">
+            <Scoreboard
+              :scores="colony.factionScores.value"
+              :tick-count="colony.state.value?.tickCount || 0"
+              :victory-tick="200"
+              :is-game-over="true"
+              :winner="colony.winner.value"
+            />
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="primary"
+            variant="solid"
+            label="Play Again"
+            @click="showGameModeDialog = true"
+          />
+        </div>
+      </template>
+    </UModal>
 
     <!-- Tutorial Overlay -->
     <TutorialOverlay

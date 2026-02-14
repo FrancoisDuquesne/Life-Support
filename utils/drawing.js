@@ -17,6 +17,13 @@ export const BUILDING_COLORS = {
   OUTPOST_HUB: { fill: '#0ea5e9', accent: '#38bdf8' },
 }
 
+// Faction colors for competitive mode
+export const FACTION_COLORS = {
+  player: '#dc2626',
+  blue: '#3b82f6',
+  green: '#22c55e',
+}
+
 // Pre-generated caches
 let tileColorsCache = null
 let tileRocksCache = null
@@ -1430,6 +1437,41 @@ export function drawFootprintBuilding(
 
   ctx.restore()
   return false
+}
+
+/**
+ * Draw a territory tint on a hex tile for faction ownership.
+ */
+export function drawTerritoryTint(ctx, cx, cy, hexS, factionColor) {
+  ctx.save()
+  ctx.fillStyle = factionColor
+  ctx.globalAlpha = 0.1
+  hexPath(ctx, cx, cy, hexS)
+  ctx.fill()
+  ctx.restore()
+}
+
+/**
+ * Draw a faction border segment between two hex centers.
+ */
+export function drawFactionBorder(ctx, cx1, cy1, cx2, cy2, hexS, color) {
+  const mx = (cx1 + cx2) / 2
+  const my = (cy1 + cy2) / 2
+  const dx = cx2 - cx1
+  const dy = cy2 - cy1
+  const len = Math.hypot(dx, dy) || 1
+  const px = (-dy / len) * hexS * 0.5
+  const py = (dx / len) * hexS * 0.5
+  ctx.save()
+  ctx.strokeStyle = color
+  ctx.globalAlpha = 0.5
+  ctx.lineWidth = Math.max(2, hexS * 0.1)
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(mx + px, my + py)
+  ctx.lineTo(mx - px, my - py)
+  ctx.stroke()
+  ctx.restore()
 }
 
 /**

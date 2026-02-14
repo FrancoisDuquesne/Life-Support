@@ -13,6 +13,8 @@ import {
   drawTerrainOverlay,
   drawEventOverlay,
   drawAlienEntity,
+  drawTerritoryTint,
+  drawFactionBorder,
 } from '~/utils/drawing'
 import {
   getFootprintCellsForType,
@@ -37,6 +39,10 @@ const props = defineProps({
   activeEvents: Array,
   buildableCells: Object,
   selectedColonist: { type: Number, default: null },
+  territoryMap: { type: Object, default: null },
+  allFactionBuildings: { type: Array, default: () => [] },
+  factionColors: { type: Object, default: () => ({}) },
+  gameMode: { type: String, default: 'solo' },
 })
 
 const canvasRef = ref(null)
@@ -594,6 +600,8 @@ watch(() => props.camera.offsetY.value, markDirty)
 watch(() => props.camera.zoom.value, markDirty)
 watch(() => props.revealedTiles, markDirty)
 watch(() => props.selectedColonist, markDirty)
+watch(() => props.territoryMap, markDirty)
+watch(() => props.allFactionBuildings, markDirty)
 
 // Re-center when grid dimensions change (after config loads)
 watch(
@@ -794,6 +802,57 @@ function render() {
     }
   }
 
+  // Layer 2c: Territory tint (competitive mode)
+  if (
+    props.gameMode === 'competitive' &&
+    props.territoryMap &&
+    props.territoryMap.size > 0
+  ) {
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        if (revealed && !revealed.has(col + ',' + row)) continue
+        const key = col + ',' + row
+        const owner = props.territoryMap.get(key)
+        if (!owner) continue
+        const color = props.factionColors[owner]
+        if (!color) continue
+        const cx = hexScreenX(col, z, ox)
+        const cy = hexScreenY(col, row, z, oy)
+        drawTerritoryTint(ctx, cx, cy, hexS, color)
+      }
+    }
+  }
+
+  // Layer 2d: Faction borders (competitive mode)
+  if (
+    props.gameMode === 'competitive' &&
+    props.territoryMap &&
+    props.territoryMap.size > 0
+  ) {
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        if (revealed && !revealed.has(col + ',' + row)) continue
+        const key = col + ',' + row
+        const owner = props.territoryMap.get(key)
+        if (!owner) continue
+        for (const [nx, ny] of hexNeighbors(col, row)) {
+          if (nx < 0 || nx >= gw || ny < 0 || ny >= gh) continue
+          if (revealed && !revealed.has(nx + ',' + ny)) continue
+          const nKey = nx + ',' + ny
+          const nOwner = props.territoryMap.get(nKey)
+          if (nOwner && nOwner !== owner) {
+            const cx1 = hexScreenX(col, z, ox)
+            const cy1 = hexScreenY(col, row, z, oy)
+            const cx2 = hexScreenX(nx, z, ox)
+            const cy2 = hexScreenY(nx, ny, z, oy)
+            const color = props.factionColors[owner] || '#fff'
+            drawFactionBorder(ctx, cx1, cy1, cx2, cy2, hexS, color)
+          }
+        }
+      }
+    }
+  }
+
   // Layer 3: Buildings
   if (props.state && props.state.placedBuildings) {
     props.state.placedBuildings.forEach((b) => {
@@ -937,6 +996,84 @@ function render() {
       oy,
       hexS,
     )
+  }
+
+  // Layer 3a1: AI faction buildings (competitive mode)
+  if (
+    props.gameMode === 'competitive' &&
+    props.allFactionBuildings.length > 0
+  ) {
+    for (const b of props.allFactionBuildings) {
+      const cells =
+        b.cells && b.cells.length > 0 ? b.cells : [{ x: b.x, y: b.y }]
+      const visibleCells = cells.filter(
+        (cell) =>
+          cell.x >= minCol &&
+          cell.x <= maxCol &&
+          cell.y >= minRow &&
+          cell.y <= maxRow &&
+          (!revealed || revealed.has(cell.x + ',' + cell.y)),
+      )
+      if (visibleCells.length === 0) continue
+
+      // Draw footprint
+      if (cells.length > 1) {
+        drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, b.type)
+      }
+
+      const metrics = getFootprintRenderMetrics(cells, z, ox, oy, hexS)
+      let drewFootprint = false
+      if (cells.length > 1 && (b.type === 'MINE' || b.type === 'OUTPOST_HUB')) {
+        drewFootprint = drawFootprintBuilding(
+          ctx,
+          b.type,
+          visibleCells,
+          z,
+          ox,
+          oy,
+          hexS,
+          0.75,
+          b.level || 1,
+        )
+      }
+      if (!drewFootprint) {
+        const rotation = getBuildingRotation(
+          b.type,
+          cells,
+          { x: b.x, y: b.y },
+          z,
+          ox,
+          oy,
+        )
+        drawBuilding(
+          ctx,
+          b.type,
+          metrics.cx - metrics.iconSize / 2,
+          metrics.cy - metrics.iconSize / 2,
+          metrics.iconSize,
+          0.75,
+          rotation,
+          b.level || 1,
+        )
+      }
+
+      // Faction color dot indicator
+      if (b.factionColor) {
+        ctx.save()
+        const dotR = Math.max(4, hexS * 0.15)
+        const dotX = metrics.cx + hexS * 0.45
+        const dotY = metrics.cy + hexS * 0.35
+        ctx.fillStyle = b.factionColor
+        ctx.globalAlpha = 0.9
+        ctx.beginPath()
+        ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.8)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        ctx.restore()
+      }
+    }
   }
 
   // Layer 3a2: Territory boundaries between bases

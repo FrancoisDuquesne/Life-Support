@@ -53,6 +53,10 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ /index.html [L]
 ```
 
+## Design Investigations
+
+- [Polytopia-Style Competitive Colonies Plan](docs/polytopia-competitive-colonies-plan.md)
+
 ## Tech Stack
 
 - **Framework**: Nuxt 3 (Vue 3), static SPA mode
