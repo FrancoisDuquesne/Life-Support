@@ -14,6 +14,7 @@ export const BUILDING_COLORS = {
   RESEARCH_LAB: { fill: '#ec4899', accent: '#f472b6' },
   DEFENSE_TURRET: { fill: '#dc2626', accent: '#f87171' },
   RADAR_STATION: { fill: '#eab308', accent: '#facc15' },
+  OUTPOST_HUB: { fill: '#0ea5e9', accent: '#38bdf8' },
 }
 
 // Pre-generated caches
@@ -1044,6 +1045,65 @@ export function drawBuilding(
       break
     }
 
+    case 'OUTPOST_HUB': {
+      // Hex platform with antenna — smaller version of MDV
+      const bodyR = r * 0.72
+      ctx.fillStyle = '#e0f2fe'
+      ctx.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const a = -Math.PI / 2 + i * (Math.PI / 3)
+        const vx = cx + bodyR * Math.cos(a)
+        const vy = cy + bodyR * Math.sin(a)
+        if (i === 0) ctx.moveTo(vx, vy)
+        else ctx.lineTo(vx, vy)
+      }
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = '#0284c7'
+      ctx.lineWidth = Math.max(1.2, r * 0.08)
+      ctx.stroke()
+      // Inner ring
+      ctx.fillStyle = '#bae6fd'
+      ctx.beginPath()
+      ctx.arc(cx, cy, bodyR * 0.5, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#0369a1'
+      ctx.lineWidth = Math.max(0.8, r * 0.05)
+      ctx.stroke()
+      // Center dot
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(cx, cy, bodyR * 0.2, 0, Math.PI * 2)
+      ctx.fill()
+      // Antenna mast
+      ctx.strokeStyle = '#0369a1'
+      ctx.lineWidth = Math.max(1.2, r * 0.07)
+      ctx.beginPath()
+      ctx.moveTo(cx, cy - bodyR * 0.3)
+      ctx.lineTo(cx, cy - bodyR * 1.1)
+      ctx.stroke()
+      // Antenna tip
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(cx, cy - bodyR * 1.1, r * 0.1, 0, Math.PI * 2)
+      ctx.fill()
+      // Signal arcs
+      ctx.strokeStyle = `rgba(56, 189, 248, 0.6)`
+      ctx.lineWidth = Math.max(0.8, r * 0.04)
+      for (let i = 1; i <= 2; i++) {
+        ctx.beginPath()
+        ctx.arc(
+          cx,
+          cy - bodyR * 1.1,
+          r * 0.18 * i,
+          -Math.PI * 0.7,
+          -Math.PI * 0.3,
+        )
+        ctx.stroke()
+      }
+      break
+    }
+
     case 'MDV_LANDING_SITE': {
       const bodyR = r * 0.78
       const legInner = bodyR * 0.92
@@ -1286,6 +1346,47 @@ export function drawFootprintBuilding(
         podR * 0.24,
       )
     }
+    drawLevelDecorations(ctx, cx, cy, hexS * 0.4, level, colors)
+    ctx.restore()
+    return true
+  }
+
+  if (type === 'OUTPOST_HUB') {
+    // Outpost hub: hex platform with connecting beams and central antenna
+    // Connectors between modules
+    ctx.strokeStyle = '#bae6fd'
+    ctx.lineWidth = Math.max(2, hexS * 0.09)
+    ctx.lineCap = 'round'
+    for (let i = 1; i < centers.length; i++) {
+      ctx.beginPath()
+      ctx.moveTo(centers[0].x, centers[0].y)
+      ctx.lineTo(centers[i].x, centers[i].y)
+      ctx.stroke()
+    }
+    // Hex pads on each cell
+    for (const c of centers) {
+      ctx.fillStyle = '#e0f2fe'
+      hexPath(ctx, c.x, c.y, podR * 0.85)
+      ctx.fill()
+      ctx.strokeStyle = '#0284c7'
+      ctx.lineWidth = Math.max(1, hexS * 0.04)
+      ctx.stroke()
+      ctx.fillStyle = colors.accent
+      ctx.beginPath()
+      ctx.arc(c.x, c.y, podR * 0.25, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    // Central antenna on centroid
+    ctx.strokeStyle = '#0369a1'
+    ctx.lineWidth = Math.max(1.2, hexS * 0.06)
+    ctx.beginPath()
+    ctx.moveTo(cx, cy)
+    ctx.lineTo(cx, cy - hexS * 0.7)
+    ctx.stroke()
+    ctx.fillStyle = colors.accent
+    ctx.beginPath()
+    ctx.arc(cx, cy - hexS * 0.7, hexS * 0.08, 0, Math.PI * 2)
+    ctx.fill()
     drawLevelDecorations(ctx, cx, cy, hexS * 0.4, level, colors)
     ctx.restore()
     return true

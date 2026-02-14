@@ -1,6 +1,7 @@
 <script setup>
 import { drawBuilding } from '~/utils/drawing'
 import { clampPercent, formatCompact } from '~/utils/formatting'
+import { getBaseAnchors, countBuildingsForBase } from '~/utils/gameEngine'
 
 const props = defineProps({
   open: Boolean,
@@ -112,6 +113,24 @@ function getCount(id) {
   return props.state.buildings[id.toLowerCase()] || 0
 }
 
+function getCapInfo(building) {
+  if (!building.maxPerBase || !props.state) return null
+  const anchors = getBaseAnchors(props.state)
+  if (anchors.length === 0) return { count: 0, cap: building.maxPerBase }
+  let maxCount = 0
+  for (const anchor of anchors) {
+    const c = countBuildingsForBase(props.state, anchor, building.id)
+    if (c > maxCount) maxCount = c
+  }
+  return { count: maxCount, cap: building.maxPerBase }
+}
+
+function isAtCap(building) {
+  const info = getCapInfo(building)
+  if (!info) return false
+  return info.count >= info.cap
+}
+
 function getResourceVal(res) {
   if (!props.state || !props.state.resources) return 0
   return props.state.resources[res] || 0
@@ -208,7 +227,7 @@ const hoveredBuilding = computed(() => {
             :key="b.id"
             class="radial-item"
             :class="{
-              'radial-item--dimmed': !canAfford(b.cost),
+              'radial-item--dimmed': !canAfford(b.cost) || isAtCap(b),
               'radial-item--hovered': hoveredId === b.id,
             }"
             :style="{
@@ -226,7 +245,15 @@ const hoveredBuilding = computed(() => {
             />
             <span class="radial-label">{{ b.name }}</span>
             <UBadge
-              v-if="getCount(b.id) > 0"
+              v-if="getCapInfo(b)"
+              :color="isAtCap(b) ? 'error' : 'primary'"
+              variant="subtle"
+              size="xs"
+              :label="`${getCapInfo(b).count}/${getCapInfo(b).cap}`"
+              class="radial-count"
+            />
+            <UBadge
+              v-else-if="getCount(b.id) > 0"
               color="primary"
               variant="subtle"
               size="xs"

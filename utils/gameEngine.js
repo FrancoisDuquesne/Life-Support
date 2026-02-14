@@ -81,55 +81,61 @@ export const BUILDING_TYPES = [
     name: 'Solar Panel',
     description: 'Generates energy from sunlight',
     cost: { minerals: 10 },
-    produces: { energy: 5 },
+    produces: { energy: 8 },
     consumes: {},
+    maxPerBase: 2,
   },
   {
     id: 'HYDROPONIC_FARM',
     name: 'Hydroponic Farm',
     description: 'Grows food using water and energy',
     cost: { minerals: 15, energy: 5 },
-    produces: { food: 5 },
-    consumes: { water: 1, energy: 1 },
+    produces: { food: 8 },
+    consumes: { water: 2, energy: 2 },
     buildTime: 2,
+    maxPerBase: 1,
   },
   {
     id: 'WATER_EXTRACTOR',
     name: 'Water Extractor',
     description: 'Extracts water from the Martian ice',
     cost: { minerals: 12 },
-    produces: { water: 6 },
-    consumes: { energy: 2 },
+    produces: { water: 10 },
+    consumes: { energy: 3 },
     buildTime: 2,
+    maxPerBase: 2,
   },
   {
     id: 'MINE',
     name: 'Mining Facility',
     description: 'Extracts minerals from the ground',
     cost: { minerals: 8 },
-    produces: { minerals: 4 },
-    consumes: { energy: 3 },
+    produces: { minerals: 8 },
+    consumes: { energy: 4 },
     footprintSize: 2,
     buildTime: 3,
+    maxPerBase: 2,
   },
   {
     id: 'HABITAT',
     name: 'Living Habitat',
-    description: 'Houses colonists, increases population capacity by 5',
+    description: 'Houses colonists, increases population capacity by 10',
     cost: { minerals: 25, water: 10 },
     produces: {},
-    consumes: { energy: 2 },
+    consumes: { energy: 3 },
     footprintSize: 2,
     buildTime: 3,
+    maxPerBase: 2,
   },
   {
     id: 'OXYGEN_GENERATOR',
     name: 'Oxygen Generator',
     description: 'Electrolyzes water to produce breathable oxygen',
     cost: { minerals: 15, energy: 10 },
-    produces: { oxygen: 6 },
-    consumes: { energy: 2, water: 1 },
+    produces: { oxygen: 10 },
+    consumes: { energy: 3, water: 2 },
     buildTime: 2,
+    maxPerBase: 1,
   },
   {
     id: 'RTG',
@@ -137,18 +143,20 @@ export const BUILDING_TYPES = [
     description:
       'Radioisotope generator — steady power, unaffected by dust storms',
     cost: { minerals: 20 },
-    produces: { energy: 5 },
+    produces: { energy: 8 },
     consumes: {},
     buildTime: 2,
+    maxPerBase: 1,
   },
   {
     id: 'RESEARCH_LAB',
     name: 'Research Lab',
     description: 'Generates research points for advanced upgrades',
     cost: { minerals: 30, energy: 20 },
-    produces: { research: 3 },
-    consumes: { energy: 4, water: 1 },
+    produces: { research: 6 },
+    consumes: { energy: 5, water: 2 },
     buildTime: 3,
+    maxPerBase: 1,
   },
   {
     id: 'DEFENSE_TURRET',
@@ -159,6 +167,7 @@ export const BUILDING_TYPES = [
     consumes: { energy: 3 },
     special: '+10 defense per level',
     buildTime: 2,
+    maxPerBase: 2,
   },
   {
     id: 'RADAR_STATION',
@@ -169,6 +178,19 @@ export const BUILDING_TYPES = [
     consumes: { energy: 2 },
     special: '+5 defense, 2-tick early warning',
     buildTime: 2,
+    maxPerBase: 1,
+  },
+  {
+    id: 'OUTPOST_HUB',
+    name: 'Outpost Hub',
+    description:
+      'Secondary base — extends build radius and resets building caps',
+    cost: { minerals: 50, energy: 20, research: 10 },
+    produces: {},
+    consumes: { energy: 3 },
+    footprintSize: 3,
+    buildTime: 5,
+    special: 'Secondary base — own build radius + building caps',
   },
 ]
 
@@ -522,7 +544,8 @@ function getUpgradeBonusProduction(pb) {
 function computeDistanceEfficiency(state, pb) {
   let minDist = Infinity
   for (const other of state.placedBuildings) {
-    if (other.type !== 'MDV_LANDING_SITE') continue
+    if (!BASE_ANCHOR_TYPES.has(other.type)) continue
+    if (isUnderConstruction(other)) continue
     for (const cell of getBuildingCells(other)) {
       const dist = hexDistance(cell.x, cell.y, pb.x, pb.y)
       if (dist < minDist) minDist = dist
@@ -532,6 +555,58 @@ function computeDistanceEfficiency(state, pb) {
   // Linear falloff beyond radius, floor at 0.5
   const excess = minDist - EFFICIENCY_RADIUS
   return Math.max(0.5, 1.0 - excess * 0.05)
+}
+
+const BASE_ANCHOR_TYPES = new Set(['MDV_LANDING_SITE', 'OUTPOST_HUB'])
+
+/**
+ * Get all base anchors (MDV + outpost hubs).
+ * Returns array of { type, x, y, cells }.
+ */
+export function getBaseAnchors(state) {
+  return (state.placedBuildings || [])
+    .filter((pb) => BASE_ANCHOR_TYPES.has(pb.type) && !isUnderConstruction(pb))
+    .map((pb) => ({
+      type: pb.type,
+      x: pb.x,
+      y: pb.y,
+      cells: getBuildingCells(pb),
+    }))
+}
+
+/**
+ * Find the nearest base anchor to a given position.
+ */
+export function getNearestBase(state, bx, by) {
+  const anchors = getBaseAnchors(state)
+  if (anchors.length === 0) return null
+  let best = null
+  let bestDist = Infinity
+  for (const anchor of anchors) {
+    for (const cell of anchor.cells) {
+      const d = hexDistance(cell.x, cell.y, bx, by)
+      if (d < bestDist) {
+        bestDist = d
+        best = anchor
+      }
+    }
+  }
+  return best
+}
+
+/**
+ * Count completed buildings of a given type assigned to a specific base.
+ */
+export function countBuildingsForBase(state, base, buildingType) {
+  let count = 0
+  for (const pb of state.placedBuildings || []) {
+    if (pb.type !== buildingType) continue
+    const nearest = getNearestBase(state, pb.x, pb.y)
+    if (nearest && nearest.x === base.x && nearest.y === base.y) {
+      count++
+    }
+  }
+  return count
 }
 
 function cellKey(x, y) {
@@ -612,7 +687,7 @@ function getEffectiveBuildRadius(state) {
 function isWithinBuildRadius(state, footprint) {
   const colonyCells = []
   for (const pb of state.placedBuildings || []) {
-    if (pb.type !== 'PIPELINE' && pb.type !== 'MDV_LANDING_SITE') continue
+    if (pb.type !== 'PIPELINE' && !BASE_ANCHOR_TYPES.has(pb.type)) continue
     colonyCells.push(...getBuildingCells(pb))
   }
   if (colonyCells.length === 0) return true
@@ -682,7 +757,7 @@ function computePipelineNetworks(state) {
 
 function isAdjacentToInfrastructure(state, x, y) {
   return (state.placedBuildings || []).some((pb) => {
-    if (pb.type !== 'PIPELINE' && pb.type !== 'MDV_LANDING_SITE') return false
+    if (pb.type !== 'PIPELINE' && !BASE_ANCHOR_TYPES.has(pb.type)) return false
     return getBuildingCells(pb).some(
       (cell) => hexDistance(cell.x, cell.y, x, y) <= 1,
     )
@@ -746,7 +821,7 @@ export function getBuildableCells(state) {
   const cells = new Set()
   const radius = getEffectiveBuildRadius(state)
   for (const pb of state?.placedBuildings || []) {
-    if (pb.type !== 'PIPELINE' && pb.type !== 'MDV_LANDING_SITE') continue
+    if (pb.type !== 'PIPELINE' && !BASE_ANCHOR_TYPES.has(pb.type)) continue
     for (const origin of getBuildingCells(pb)) {
       const nearby = hexesInRadius(
         origin.x,
@@ -862,7 +937,7 @@ function placeInstantBuilding(state, type, x, y, footprint = null) {
   state.buildings[bType.id.toLowerCase()] =
     (state.buildings[bType.id.toLowerCase()] || 0) + 1
   if (bType.id === 'HABITAT') {
-    state.populationCapacity += 5
+    state.populationCapacity += 10
   }
   return placed
 }
@@ -901,7 +976,6 @@ function createDeveloperBalancedStarter(state) {
   }
 
   const starterBuildings = [
-    'SOLAR_PANEL',
     'SOLAR_PANEL',
     'SOLAR_PANEL',
     'WATER_EXTRACTOR',
@@ -1403,7 +1477,7 @@ export function buildAt(state, type, x, y, terrainMap) {
     (state.buildings[bType.id.toLowerCase()] || 0) + 1
 
   if (bType.id === 'HABITAT') {
-    state.populationCapacity += 5 + techEffects.habitatCapacityBonus
+    state.populationCapacity += 10 + techEffects.habitatCapacityBonus
   }
 
   let message = `Construction started for ${bType.name} at (${x},${y})`
@@ -1438,6 +1512,22 @@ export function validateBuildPlacement(
   }
 
   const footprint = collectFootprintCells(x, y, bType.footprintSize)
+
+  // Outpost minimum distance from any existing base anchor
+  if (bType.id === 'OUTPOST_HUB') {
+    const anchors = getBaseAnchors(state)
+    for (const anchor of anchors) {
+      for (const cell of anchor.cells) {
+        if (hexDistance(cell.x, cell.y, x, y) < 12) {
+          return {
+            ok: false,
+            message: 'Outpost must be at least 12 hexes from any existing base',
+          }
+        }
+      }
+    }
+  }
+
   if (bType.id === 'PIPELINE') {
     const canAttach = isAdjacentToExistingStructure(state, x, y)
     if (!canAttach) {
@@ -1492,6 +1582,20 @@ export function validateBuildPlacement(
         return {
           ok: false,
           message: `Not enough resources to build ${bType.name}`,
+        }
+      }
+    }
+  }
+
+  // Enforce per-base building cap
+  if (bType.maxPerBase) {
+    const nearestBase = getNearestBase(state, x, y)
+    if (nearestBase) {
+      const count = countBuildingsForBase(state, nearestBase, bType.id)
+      if (count >= bType.maxPerBase) {
+        return {
+          ok: false,
+          message: `${bType.name} cap reached (${count}/${bType.maxPerBase}) for this base`,
         }
       }
     }
@@ -1634,7 +1738,7 @@ export function demolishAt(state, x, y) {
     const techEffects = getTechEffects(state.unlockedTechs)
     state.populationCapacity = Math.max(
       10,
-      state.populationCapacity - (5 + techEffects.habitatCapacityBonus),
+      state.populationCapacity - (10 + techEffects.habitatCapacityBonus),
     )
   }
 
@@ -1763,5 +1867,6 @@ export function getBuildingsInfo() {
     footprintSize: b.footprintSize || 1,
     buildTime: b.buildTime || 2,
     buildable: b.buildable !== false,
+    maxPerBase: b.maxPerBase || null,
   }))
 }

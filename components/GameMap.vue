@@ -18,6 +18,8 @@ import {
   getFootprintCellsForType,
   BUILDING_TYPES,
   validateBuildPlacement,
+  getBaseAnchors,
+  getNearestBase,
 } from '~/utils/gameEngine'
 import { ROLES } from '~/utils/colonistEngine'
 
@@ -822,7 +824,7 @@ function render() {
 
       if (cells.length > 1) {
         drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, b.type)
-        if (b.type === 'MINE') {
+        if (b.type === 'MINE' || b.type === 'OUTPOST_HUB') {
           drewTileCenteredFootprint = drawFootprintBuilding(
             ctx,
             b.type,
@@ -935,6 +937,49 @@ function render() {
       oy,
       hexS,
     )
+  }
+
+  // Layer 3a2: Territory boundaries between bases
+  if (props.state && props.state.placedBuildings) {
+    const anchors = getBaseAnchors(props.state)
+    if (anchors.length >= 2) {
+      ctx.save()
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)'
+      ctx.lineWidth = Math.max(2, hexS * 0.12)
+      ctx.lineCap = 'round'
+      for (let row = minRow; row <= maxRow; row++) {
+        for (let col = minCol; col <= maxCol; col++) {
+          if (revealed && !revealed.has(col + ',' + row)) continue
+          const myBase = getNearestBase(props.state, col, row)
+          if (!myBase) continue
+          for (const [nx, ny] of hexNeighbors(col, row)) {
+            if (nx < 0 || nx >= gw || ny < 0 || ny >= gh) continue
+            if (revealed && !revealed.has(nx + ',' + ny)) continue
+            const nBase = getNearestBase(props.state, nx, ny)
+            if (!nBase || (nBase.x === myBase.x && nBase.y === myBase.y))
+              continue
+            // Draw edge between these two hex centers
+            const cx1 = hexScreenX(col, z, ox)
+            const cy1 = hexScreenY(col, row, z, oy)
+            const cx2 = hexScreenX(nx, z, ox)
+            const cy2 = hexScreenY(nx, ny, z, oy)
+            // Midpoint edge perpendicular
+            const mx = (cx1 + cx2) / 2
+            const my = (cy1 + cy2) / 2
+            const dx = cx2 - cx1
+            const dy = cy2 - cy1
+            const len = Math.hypot(dx, dy) || 1
+            const px = (-dy / len) * hexS * 0.5
+            const py = (dx / len) * hexS * 0.5
+            ctx.beginPath()
+            ctx.moveTo(mx + px, my + py)
+            ctx.lineTo(mx - px, my - py)
+            ctx.stroke()
+          }
+        }
+      }
+      ctx.restore()
+    }
   }
 
   // Layer 3b: Colonist markers
@@ -1178,7 +1223,7 @@ function render() {
       }
       const metrics = getFootprintRenderMetrics(footprint, z, ox, oy, hexS)
       const drewTileCenteredFootprint =
-        sel === 'MINE' &&
+        (sel === 'MINE' || sel === 'OUTPOST_HUB') &&
         footprint.length > 1 &&
         visibleFootprint.length > 0 &&
         drawFootprintBuilding(

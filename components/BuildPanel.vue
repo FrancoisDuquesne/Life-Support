@@ -1,6 +1,11 @@
 <script setup>
 import { drawBuilding } from '~/utils/drawing'
 import { clampPercent, formatCompact } from '~/utils/formatting'
+import {
+  getBaseAnchors,
+  getNearestBase,
+  countBuildingsForBase,
+} from '~/utils/gameEngine'
 
 const props = defineProps({
   buildings: Array,
@@ -60,6 +65,29 @@ function hasEntries(map) {
 function getCount(id) {
   if (!props.state || !props.state.buildings) return 0
   return props.state.buildings[id.toLowerCase()] || 0
+}
+
+/**
+ * Get the max count of a building per base and how many are already built
+ * at the primary (MDV) base. Returns { count, cap } or null if uncapped.
+ */
+function getCapInfo(building) {
+  if (!building.maxPerBase || !props.state) return null
+  const anchors = getBaseAnchors(props.state)
+  if (anchors.length === 0) return { count: 0, cap: building.maxPerBase }
+  // Show worst case across all bases (highest count)
+  let maxCount = 0
+  for (const anchor of anchors) {
+    const c = countBuildingsForBase(props.state, anchor, building.id)
+    if (c > maxCount) maxCount = c
+  }
+  return { count: maxCount, cap: building.maxPerBase }
+}
+
+function isAtCap(building) {
+  const info = getCapInfo(building)
+  if (!info) return false
+  return info.count >= info.cap
 }
 
 function getResourceVal(res) {
@@ -149,7 +177,9 @@ function onCardLeave() {
         :key="b.id"
         :class="[
           'bg-muted border-default relative flex flex-col items-center gap-1 rounded-md border p-1.5 transition-colors',
-          canAfford(b.cost) ? 'hover:bg-elevated cursor-pointer' : 'opacity-55',
+          canAfford(b.cost) && !isAtCap(b)
+            ? 'hover:bg-elevated cursor-pointer'
+            : 'opacity-55',
           selectedBuilding === b.id
             ? 'border-primary ring-primary/30 ring-2'
             : 'hover:border-muted-foreground/40',
@@ -158,10 +188,21 @@ function onCardLeave() {
         @mouseenter="onCardEnter(b.id, $event)"
         @mouseleave="onCardLeave"
       >
-        <!-- Count badge (top-right) -->
+        <!-- Count / cap badge (top-right) -->
         <span
-          v-if="getCount(b.id) > 0"
-          class="bg-primary text-primary-foreground absolute -top-1 -right-1 z-10 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-[10px] font-bold"
+          v-if="getCapInfo(b)"
+          :class="[
+            'absolute -top-1 -right-1 z-10 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-xs font-bold',
+            isAtCap(b)
+              ? 'bg-error text-error-foreground'
+              : 'bg-primary text-primary-foreground',
+          ]"
+        >
+          {{ getCapInfo(b).count }}/{{ getCapInfo(b).cap }}
+        </span>
+        <span
+          v-else-if="getCount(b.id) > 0"
+          class="bg-primary text-primary-foreground absolute -top-1 -right-1 z-10 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-xs font-bold"
         >
           {{ getCount(b.id) }}
         </span>
@@ -278,8 +319,21 @@ function onCardLeave() {
             {{ hoveredBuilding.special }}
           </div>
 
+          <!-- Base limit -->
+          <div
+            v-if="hoveredBuilding.maxPerBase"
+            :class="[
+              'mt-1.5 text-xs font-medium',
+              isAtCap(hoveredBuilding) ? 'text-error' : 'text-muted',
+            ]"
+          >
+            Base limit: {{ getCapInfo(hoveredBuilding)?.count ?? 0 }}/{{
+              hoveredBuilding.maxPerBase
+            }}
+          </div>
+
           <!-- Build time -->
-          <div class="text-muted mt-1 text-[10px]">
+          <div class="text-muted mt-1 text-xs">
             Build time: {{ hoveredBuilding.buildTime || 2 }} ticks
           </div>
         </div>

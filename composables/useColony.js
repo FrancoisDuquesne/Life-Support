@@ -11,6 +11,8 @@ import {
   computeResourceDeltas as engineDeltas,
   getUpgradeOptions as engineGetUpgradeOptions,
   setColonistTarget,
+  getBaseAnchors as engineGetBaseAnchors,
+  countBuildingsForBase as engineCountBuildingsForBase,
   GRID_WIDTH,
   GRID_HEIGHT,
 } from '~/utils/gameEngine'
@@ -533,6 +535,16 @@ export function useColony() {
     )
   })
 
+  const baseAnchors = computed(() => {
+    if (!colony) return []
+    return engineGetBaseAnchors(colony)
+  })
+
+  function getBuildingCountForBase(base, type) {
+    if (!colony) return 0
+    return engineCountBuildingsForBase(colony, base, type)
+  }
+
   const adjustedBuildingsInfo = computed(() => {
     const techs = getTechEffects(state.value?.unlockedTechs)
     return buildingsInfo.value.map((b) => ({
@@ -565,6 +577,8 @@ export function useColony() {
     availableMissions,
     techStatuses,
     adjustedBuildingsInfo,
+    baseAnchors,
+    getBuildingCountForBase,
     tickSpeed,
     devModeAllowed: DEV_MODE_ALLOWED,
     devModeEnabled,

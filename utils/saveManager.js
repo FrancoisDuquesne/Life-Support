@@ -4,7 +4,7 @@ import { mulberry32 } from '~/utils/hex'
 import { getFootprintCellsForType } from '~/utils/gameEngine'
 
 const SAVE_KEY = 'life-support-save'
-const SAVE_VERSION = 8
+const SAVE_VERSION = 9
 
 function normalizePlacedBuilding(pb) {
   const fallbackCells = getFootprintCellsForType(pb.type, pb.x, pb.y)
@@ -256,6 +256,24 @@ function migrateV7toV8(data) {
 }
 
 /**
+ * Migrate v8 saves to v9 (building caps + habitat rebalance to +10 cap).
+ */
+function migrateV8toV9(data) {
+  const s = data.state
+  // Recalculate populationCapacity: base 10 + 10 per completed habitat
+  const habitatCount = (s.placedBuildings || []).filter(
+    (pb) => pb.type === 'HABITAT',
+  ).length
+  s.populationCapacity = 10 + habitatCount * 10
+  // Add outpost_hub building count
+  if (s.buildings) {
+    if (s.buildings.outpost_hub === undefined) s.buildings.outpost_hub = 0
+  }
+  data.v = 9
+  return data
+}
+
+/**
  * Load saved game from localStorage.
  * Returns { state, revealedTiles } or null if no save / incompatible version.
  */
@@ -273,6 +291,7 @@ export function loadGame() {
     if (data.v === 5) data = migrateV5toV6(data)
     if (data.v === 6) data = migrateV6toV7(data)
     if (data.v === 7) data = migrateV7toV8(data)
+    if (data.v === 8) data = migrateV8toV9(data)
 
     if (data.v !== SAVE_VERSION) return null
 
