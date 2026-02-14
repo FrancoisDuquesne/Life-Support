@@ -22,6 +22,7 @@ const showResourceGraph = ref(false)
 const showCollapseModal = ref(false)
 const showEventLog = ref(false)
 const showMissionPanel = ref(false)
+const showTechTree = ref(false)
 const colonistsPanelRef = ref(null)
 
 // Upgrade branch dialog state
@@ -567,6 +568,10 @@ function onUpgradeBranchClose() {
   }
 }
 
+function onResearchTech(techId) {
+  colony.researchTech(techId)
+}
+
 function onLaunchMission({ typeId, colonistIds }) {
   colony.launchMission(typeId, colonistIds, 0, 0)
 }
@@ -762,6 +767,29 @@ onUnmounted(() => {
             :active-missions="colony.state.value?.missions || []"
             :tick-count="colony.state.value?.tickCount || 0"
             @launch="onLaunchMission"
+          />
+        </div>
+        <div
+          class="bg-default border-default rounded-md border p-1.5 shadow-xs"
+        >
+          <div class="flex items-center justify-between">
+            <h4 class="uppercase">Research</h4>
+            <UBadge
+              v-if="colony.state.value?.unlockedTechs?.length"
+              color="primary"
+              variant="subtle"
+              size="xs"
+              :label="`${colony.state.value.unlockedTechs.length} unlocked`"
+            />
+          </div>
+          <UButton
+            color="primary"
+            variant="soft"
+            size="xs"
+            block
+            class="mt-1"
+            label="Tech Tree"
+            @click="showTechTree = true"
           />
         </div>
         <UButton
@@ -1016,7 +1044,7 @@ onUnmounted(() => {
         </div>
         <div class="scrollbar-dark min-h-0 flex-1 overflow-y-auto">
           <BuildPanel
-            :buildings="colony.buildingsInfo.value"
+            :buildings="colony.adjustedBuildingsInfo.value"
             :state="colony.state.value"
             :deltas="colony.resourceDeltas.value"
             :selected-building="interaction.selectedBuilding.value"
@@ -1039,6 +1067,14 @@ onUnmounted(() => {
       class="fixed right-4 z-20 hidden gap-2 max-md:flex"
       style="bottom: calc(1rem + env(safe-area-inset-bottom, 0px))"
     >
+      <UButton
+        color="neutral"
+        variant="soft"
+        size="lg"
+        class="font-bold shadow-md"
+        label="Research"
+        @click="showTechTree = true"
+      />
       <UButton
         color="neutral"
         variant="soft"
@@ -1073,7 +1109,7 @@ onUnmounted(() => {
       <template #body>
         <div class="scrollbar-dark max-h-[60vh] overflow-y-auto">
           <BuildPanel
-            :buildings="colony.buildingsInfo.value"
+            :buildings="colony.adjustedBuildingsInfo.value"
             :state="colony.state.value"
             :deltas="colony.resourceDeltas.value"
             :selected-building="interaction.selectedBuilding.value"
@@ -1180,6 +1216,16 @@ onUnmounted(() => {
       </template>
     </UDrawer>
 
+    <!-- Tech Tree Panel -->
+    <TechTreePanel
+      :open="showTechTree"
+      :unlocked-techs="colony.state.value?.unlockedTechs || []"
+      :tech-statuses="colony.techStatuses.value"
+      :research-points="colony.state.value?.resources?.research || 0"
+      @close="showTechTree = false"
+      @research="onResearchTech"
+    />
+
     <!-- Upgrade Branch Dialog -->
     <UpgradeBranchDialog
       :open="upgradeBranchDialog.open"
@@ -1215,7 +1261,7 @@ onUnmounted(() => {
       :open="radialMenu.open"
       :x="radialMenu.x"
       :y="radialMenu.y"
-      :buildings="colony.buildingsInfo.value"
+      :buildings="colony.adjustedBuildingsInfo.value"
       :state="colony.state.value"
       :deltas="colony.resourceDeltas.value"
       :can-afford="colony.canAfford"

@@ -28,6 +28,7 @@ import {
   resolveAlienEvent,
   computeDefenseRating,
 } from '~/utils/defenseEngine'
+import { getTechEffects } from '~/utils/techTree'
 import {
   hexDistance,
   hexNeighbors,
@@ -601,6 +602,13 @@ function consumptionMultiplierFromLevel(pb) {
   return consMult
 }
 
+function getEffectiveBuildRadius(state) {
+  return (
+    MAX_BUILD_RADIUS_FROM_COLONY +
+    getTechEffects(state?.unlockedTechs).buildRadiusBonus
+  )
+}
+
 function isWithinBuildRadius(state, footprint) {
   const colonyCells = []
   for (const pb of state.placedBuildings || []) {
@@ -608,10 +616,9 @@ function isWithinBuildRadius(state, footprint) {
     colonyCells.push(...getBuildingCells(pb))
   }
   if (colonyCells.length === 0) return true
+  const radius = getEffectiveBuildRadius(state)
   return footprint.some((f) =>
-    colonyCells.some(
-      (c) => hexDistance(c.x, c.y, f.x, f.y) <= MAX_BUILD_RADIUS_FROM_COLONY,
-    ),
+    colonyCells.some((c) => hexDistance(c.x, c.y, f.x, f.y) <= radius),
   )
 }
 
@@ -737,13 +744,14 @@ function syncColonistUnits(state) {
 
 export function getBuildableCells(state) {
   const cells = new Set()
+  const radius = getEffectiveBuildRadius(state)
   for (const pb of state?.placedBuildings || []) {
     if (pb.type !== 'PIPELINE' && pb.type !== 'MDV_LANDING_SITE') continue
     for (const origin of getBuildingCells(pb)) {
       const nearby = hexesInRadius(
         origin.x,
         origin.y,
-        MAX_BUILD_RADIUS_FROM_COLONY,
+        radius,
         GRID_WIDTH,
         GRID_HEIGHT,
       )
@@ -937,6 +945,7 @@ export function createColonyState(options = {}) {
     defenseRating: 0,
     alienThreatLevel: 0,
     alienEvents: [],
+    unlockedTechs: [],
   }
   state.colonists = createInitialColonists(state)
   const landing = findLandingSite(options.terrainMap)
@@ -985,6 +994,7 @@ export function computeResourceDeltas(state, terrainMap) {
     research: 0,
   }
   const modifiers = getActiveModifiers(state)
+  const techEffects = getTechEffects(state.unlockedTechs)
 
   // Colonist role bonuses and colony efficiency
   const roleBonuses = computeRoleBonuses(state)
@@ -1027,6 +1037,14 @@ export function computeResourceDeltas(state, terrainMap) {
       if (res === 'energy') {
         effectiveMult *= modifiers.energyMultiplier
       }
+      // Tech tree production bonuses
+      effectiveMult *= techEffects.globalProductionMult
+      if (res === 'food') effectiveMult *= techEffects.foodProductionMult
+      if (res === 'oxygen') effectiveMult *= techEffects.oxygenProductionMult
+      if (res === 'minerals')
+        effectiveMult *= techEffects.mineralsProductionMult
+      if (res === 'energy' && bType.id === 'RTG')
+        effectiveMult *= techEffects.rtgProductionMult
       deltas[res] = (deltas[res] || 0) + amt * effectiveMult * levelProdMult
     }
 
@@ -1037,7 +1055,13 @@ export function computeResourceDeltas(state, terrainMap) {
     }
 
     for (const [res, amt] of Object.entries(bType.consumes)) {
-      deltas[res] = (deltas[res] || 0) - amt * levelConsMult
+      let consMult = levelConsMult
+      // Tech tree consumption bonuses
+      if (res === 'energy') consMult *= techEffects.energyConsumptionMult
+      if (res === 'water') consMult *= techEffects.waterConsumptionMult
+      if (res === 'energy' && bType.id === 'MINE')
+        consMult *= techEffects.mineEnergyConsumptionMult
+      deltas[res] = (deltas[res] || 0) - amt * consMult
     }
   }
 
@@ -1350,14 +1374,15 @@ export function buildAt(state, type, x, y, terrainMap) {
       colonyState: toSnapshot(state),
     }
   }
-  const { bType, tile, costMult, footprint } = validation
+  const { bType, tile, costMult, footprint, techEffects } = validation
 
   for (const [res, amt] of Object.entries(bType.cost)) {
     const adjustedCost = res === 'minerals' ? Math.ceil(amt * costMult) : amt
     state.resources[res] -= adjustedCost
   }
 
-  const buildTime = bType.buildTime || 2
+  const baseBuildTime = bType.buildTime || 2
+  const buildTime = Math.max(1, baseBuildTime - techEffects.buildTimeReduction)
   const placed = {
     id: state.nextBuildingId++,
     type: bType.id,
@@ -1378,7 +1403,7 @@ export function buildAt(state, type, x, y, terrainMap) {
     (state.buildings[bType.id.toLowerCase()] || 0) + 1
 
   if (bType.id === 'HABITAT') {
-    state.populationCapacity += 5
+    state.populationCapacity += 5 + techEffects.habitatCapacityBonus
   }
 
   let message = `Construction started for ${bType.name} at (${x},${y})`
@@ -1424,7 +1449,7 @@ export function validateBuildPlacement(
   } else if (!isWithinBuildRadius(state, footprint)) {
     return {
       ok: false,
-      message: `Must build within ${MAX_BUILD_RADIUS_FROM_COLONY} hexes of colony`,
+      message: `Must build within ${getEffectiveBuildRadius(state)} hexes of colony`,
     }
   }
 
@@ -1456,7 +1481,9 @@ export function validateBuildPlacement(
   }
 
   const tile = getTerrainAt(terrainMap, x, y, GRID_WIDTH)
-  const costMult = getPlacementCostMultiplier(tile)
+  const terrainCostMult = getPlacementCostMultiplier(tile)
+  const techEffects = getTechEffects(state.unlockedTechs)
+  const costMult = terrainCostMult * techEffects.mineralCostMult
 
   if (checkResources) {
     for (const [res, amt] of Object.entries(bType.cost)) {
@@ -1470,7 +1497,15 @@ export function validateBuildPlacement(
     }
   }
 
-  return { ok: true, message: '', bType, footprint, tile, costMult }
+  return {
+    ok: true,
+    message: '',
+    bType,
+    footprint,
+    tile,
+    costMult,
+    techEffects,
+  }
 }
 
 export function upgradeBuildingAt(state, x, y, branchChoice) {
@@ -1596,7 +1631,11 @@ export function demolishAt(state, x, y) {
   )
 
   if (target.type === 'HABITAT') {
-    state.populationCapacity = Math.max(10, state.populationCapacity - 5)
+    const techEffects = getTechEffects(state.unlockedTechs)
+    state.populationCapacity = Math.max(
+      10,
+      state.populationCapacity - (5 + techEffects.habitatCapacityBonus),
+    )
   }
 
   return {
@@ -1692,6 +1731,7 @@ export function toSnapshot(state) {
       targetX: u.targetX ?? null,
       targetY: u.targetY ?? null,
     })),
+    unlockedTechs: [...(state.unlockedTechs || [])],
     lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
     avgHealth:
       colonists.length > 0

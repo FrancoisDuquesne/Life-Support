@@ -4,7 +4,7 @@ import { mulberry32 } from '~/utils/hex'
 import { getFootprintCellsForType } from '~/utils/gameEngine'
 
 const SAVE_KEY = 'life-support-save'
-const SAVE_VERSION = 7
+const SAVE_VERSION = 8
 
 function normalizePlacedBuilding(pb) {
   const fallbackCells = getFootprintCellsForType(pb.type, pb.x, pb.y)
@@ -62,6 +62,7 @@ export function saveGame(state, revealedTiles) {
       defenseRating: state.defenseRating || 0,
       alienThreatLevel: state.alienThreatLevel || 0,
       alienEvents: state.alienEvents || [],
+      unlockedTechs: state.unlockedTechs || [],
     },
     revealedTiles: Array.from(revealedTiles),
   }
@@ -245,6 +246,16 @@ function migrateV6toV7(data) {
 }
 
 /**
+ * Migrate v7 saves to v8 (add tech tree unlockedTechs).
+ */
+function migrateV7toV8(data) {
+  const s = data.state
+  if (!s.unlockedTechs) s.unlockedTechs = []
+  data.v = 8
+  return data
+}
+
+/**
  * Load saved game from localStorage.
  * Returns { state, revealedTiles } or null if no save / incompatible version.
  */
@@ -261,6 +272,7 @@ export function loadGame() {
     if (data.v === 4) data = migrateV4toV5(data)
     if (data.v === 5) data = migrateV5toV6(data)
     if (data.v === 6) data = migrateV6toV7(data)
+    if (data.v === 7) data = migrateV7toV8(data)
 
     if (data.v !== SAVE_VERSION) return null
 
@@ -307,6 +319,7 @@ export function loadGame() {
       defenseRating: s.defenseRating || 0,
       alienThreatLevel: s.alienThreatLevel || 0,
       alienEvents: s.alienEvents || [],
+      unlockedTechs: s.unlockedTechs || [],
     }
 
     const revealedTiles = new Set(data.revealedTiles)

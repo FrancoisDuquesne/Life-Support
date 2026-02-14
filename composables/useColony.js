@@ -18,6 +18,12 @@ import {
   createMission as engineCreateMission,
   getAvailableMissions as engineAvailableMissions,
 } from '~/utils/missionEngine'
+import {
+  researchTech as engineResearchTech,
+  getTechEffects,
+  getTechStatuses,
+  TECHS,
+} from '~/utils/techTree'
 import { saveGame, loadGame, clearSave } from '~/utils/saveManager'
 import {
   generateTerrainMap,
@@ -501,6 +507,46 @@ export function useColony() {
     startTickTimer()
   }
 
+  function researchTech(techId) {
+    if (!colony) return { success: false, message: 'Colony not initialized' }
+    const result = engineResearchTech(colony, techId)
+    if (result.success) {
+      // Retroactive habitat capacity bonus
+      const tech = TECHS.find((t) => t.id === techId)
+      if (tech?.effects?.habitatCapacityBonus) {
+        const habitatCount = colony.buildings.habitat || 0
+        colony.populationCapacity +=
+          tech.effects.habitatCapacityBonus * habitatCount
+      }
+      state.value = toSnapshot(colony)
+      addLog(state.value.tickCount, result.message)
+      trySave()
+    }
+    return result
+  }
+
+  const techStatuses = computed(() => {
+    if (!state.value) return {}
+    return getTechStatuses(
+      state.value.unlockedTechs,
+      state.value.resources?.research,
+    )
+  })
+
+  const adjustedBuildingsInfo = computed(() => {
+    const techs = getTechEffects(state.value?.unlockedTechs)
+    return buildingsInfo.value.map((b) => ({
+      ...b,
+      cost: Object.fromEntries(
+        Object.entries(b.cost).map(([res, amt]) => [
+          res,
+          res === 'minerals' ? Math.ceil(amt * techs.mineralCostMult) : amt,
+        ]),
+      ),
+      buildTime: Math.max(1, (b.buildTime || 2) - techs.buildTimeReduction),
+    }))
+  })
+
   onUnmounted(stopTickTimer)
 
   return {
@@ -517,6 +563,8 @@ export function useColony() {
     buildableCells,
     activeEvents,
     availableMissions,
+    techStatuses,
+    adjustedBuildingsInfo,
     tickSpeed,
     devModeAllowed: DEV_MODE_ALLOWED,
     devModeEnabled,
@@ -527,6 +575,7 @@ export function useColony() {
     launchMission,
     demolishAt,
     moveColonistTo,
+    researchTech,
     resetColony,
     canAfford,
     revealAround,
