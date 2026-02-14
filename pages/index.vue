@@ -121,23 +121,15 @@ watch(
 // Milestones
 const unlockedMilestoneIds = ref(loadUnlockedMilestones())
 const showMilestones = ref(false)
-// Notification stack (replaces both event toast and milestone toast)
-const notificationStack = ref([])
-let notifIdCounter = 0
+// Single persistent warning (replaces toast stack)
+const latestWarning = ref(null)
 
-function pushNotification(msg, severity = 'normal') {
-  const id = ++notifIdCounter
-  notificationStack.value = [
-    ...notificationStack.value,
-    { id, msg, severity, timestamp: Date.now() },
-  ]
-  setTimeout(() => {
-    notificationStack.value = notificationStack.value.filter((n) => n.id !== id)
-  }, 5000)
+function setWarning(msg, severity = 'normal') {
+  latestWarning.value = { msg, severity }
 }
 
-function dismissNotification(id) {
-  notificationStack.value = notificationStack.value.filter((n) => n.id !== id)
+function dismissWarning() {
+  latestWarning.value = null
 }
 
 watch(
@@ -156,7 +148,7 @@ watch(
       }
       saveUnlockedMilestones(unlockedMilestoneIds.value)
       for (const m of newlyUnlocked) {
-        pushNotification(`${m.icon} ${m.name}: ${m.description}`, 'normal')
+        setWarning(`${m.icon} ${m.name}: ${m.description}`, 'normal')
       }
     }
   },
@@ -205,7 +197,7 @@ watch(
         latest &&
         (latest.severity === 'warning' || latest.severity === 'danger')
       ) {
-        pushNotification(latest.msg, latest.severity)
+        setWarning(latest.msg, latest.severity)
       }
     }
   },
@@ -655,7 +647,7 @@ const devModeModel = computed({
   },
 })
 
-const SPEED_KEYS = { 1: 5000, 2: 2500, 3: 1000, 4: 500 }
+const SPEED_KEYS = { 1: 3000, 2: 2000, 3: 1000, 4: 500 }
 
 function handleKeyDown(e) {
   // Ignore when typing in inputs
@@ -1066,8 +1058,8 @@ onUnmounted(() => {
       </div>
       <!-- Notification Stack -->
       <NotificationStack
-        :notifications="notificationStack"
-        @dismiss="dismissNotification"
+        :notification="latestWarning"
+        @dismiss="dismissWarning"
         @open-log="showEventLog = true"
       />
       <!-- Hover trigger strip (visible only when sidebar is hidden) -->

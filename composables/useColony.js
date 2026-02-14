@@ -166,6 +166,15 @@ export function useColony() {
   function initRevealedMap() {
     const gw = gridWidth.value
     const gh = gridHeight.value
+
+    if (devModeEnabled.value) {
+      const revealed = new Set()
+      for (let r = 0; r < gh; r++)
+        for (let c = 0; c < gw; c++) revealed.add(c + ',' + r)
+      revealedTiles.value = revealed
+      return
+    }
+
     const revealed = new Set()
     const { x: centerCol, y: centerRow } = getLandingPosition()
     const maxSightRadius = 11
@@ -466,7 +475,7 @@ export function useColony() {
   const gridWidth = computed(() => GRID_WIDTH)
   const gridHeight = computed(() => GRID_HEIGHT)
 
-  const tickSpeed = ref(5000)
+  const tickSpeed = ref(2500)
 
   function manualTick() {
     doTick()

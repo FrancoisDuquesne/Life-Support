@@ -965,61 +965,53 @@ function render() {
       ctx.restore()
     }
 
-    // Layer 3b2: Move target marker + dashed line for selected colonist
-    if (props.selectedColonist) {
-      const selUnit = props.state.colonistUnits.find(
-        (u) => u.colonistId === props.selectedColonist,
-      )
-      if (
-        selUnit &&
-        selUnit.targetX != null &&
-        selUnit.targetY != null
-      ) {
-        const selColonist = colonistById.get(selUnit.colonistId)
-        const selColor = ROLES[selColonist?.role]?.color || '#f59e0b'
-        const fromX = hexScreenX(selUnit.x, z, ox)
-        const fromY = hexScreenY(selUnit.x, selUnit.y, z, oy)
-        const toX = hexScreenX(selUnit.targetX, z, ox)
-        const toY = hexScreenY(selUnit.targetX, selUnit.targetY, z, oy)
+    // Layer 3b2: Move target markers + dashed lines for all colonists with targets
+    for (const unit of props.state.colonistUnits) {
+      if (unit.targetX == null || unit.targetY == null) continue
+      const colonist = colonistById.get(unit.colonistId)
+      const unitColor = ROLES[colonist?.role]?.color || '#f59e0b'
+      const isSelected = unit.colonistId === props.selectedColonist
+      const fromX = hexScreenX(unit.x, z, ox)
+      const fromY = hexScreenY(unit.x, unit.y, z, oy)
+      const toX = hexScreenX(unit.targetX, z, ox)
+      const toY = hexScreenY(unit.targetX, unit.targetY, z, oy)
 
-        // Dashed line from colonist to target
+      // Dashed line from colonist to target
+      ctx.save()
+      ctx.strokeStyle = unitColor
+      ctx.globalAlpha = isSelected ? 0.6 : 0.35
+      ctx.lineWidth = isSelected ? Math.max(1.5, z * 1.2) : Math.max(1, z * 0.8)
+      ctx.setLineDash([Math.max(4, hexS * 0.2), Math.max(3, hexS * 0.15)])
+      ctx.beginPath()
+      ctx.moveTo(fromX, fromY - hexS * 0.28)
+      ctx.lineTo(toX, toY)
+      ctx.stroke()
+      ctx.restore()
+
+      // Pulsing target crosshair
+      if (
+        unit.targetX >= minCol &&
+        unit.targetX <= maxCol &&
+        unit.targetY >= minRow &&
+        unit.targetY <= maxRow
+      ) {
+        const pulse = 0.5 + 0.5 * Math.sin(now * 0.006)
+        const crossR = Math.max(5, hexS * 0.2) + pulse * 2
         ctx.save()
-        ctx.strokeStyle = selColor
-        ctx.globalAlpha = 0.5
-        ctx.lineWidth = Math.max(1.5, z * 1.2)
-        ctx.setLineDash([Math.max(4, hexS * 0.2), Math.max(3, hexS * 0.15)])
+        ctx.strokeStyle = unitColor
+        ctx.globalAlpha = isSelected ? 0.6 + pulse * 0.3 : 0.3 + pulse * 0.15
+        ctx.lineWidth = isSelected ? 2 : 1.2
         ctx.beginPath()
-        ctx.moveTo(fromX, fromY - hexS * 0.28)
-        ctx.lineTo(toX, toY)
+        ctx.arc(toX, toY, crossR, 0, Math.PI * 2)
+        ctx.stroke()
+        const armLen = crossR * 0.6
+        ctx.beginPath()
+        ctx.moveTo(toX - armLen, toY)
+        ctx.lineTo(toX + armLen, toY)
+        ctx.moveTo(toX, toY - armLen)
+        ctx.lineTo(toX, toY + armLen)
         ctx.stroke()
         ctx.restore()
-
-        // Pulsing target crosshair
-        if (
-          selUnit.targetX >= minCol &&
-          selUnit.targetX <= maxCol &&
-          selUnit.targetY >= minRow &&
-          selUnit.targetY <= maxRow
-        ) {
-          const pulse = 0.5 + 0.5 * Math.sin(now * 0.006)
-          const crossR = Math.max(5, hexS * 0.2) + pulse * 2
-          ctx.save()
-          ctx.strokeStyle = selColor
-          ctx.globalAlpha = 0.6 + pulse * 0.3
-          ctx.lineWidth = 2
-          ctx.beginPath()
-          ctx.arc(toX, toY, crossR, 0, Math.PI * 2)
-          ctx.stroke()
-          // Cross lines
-          const armLen = crossR * 0.6
-          ctx.beginPath()
-          ctx.moveTo(toX - armLen, toY)
-          ctx.lineTo(toX + armLen, toY)
-          ctx.moveTo(toX, toY - armLen)
-          ctx.lineTo(toX, toY + armLen)
-          ctx.stroke()
-          ctx.restore()
-        }
       }
     }
   }
