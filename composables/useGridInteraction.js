@@ -1,6 +1,7 @@
 export function useGridInteraction(camera, gridWidth, gridHeight) {
   const hoverTile = ref(null)
   const selectedBuilding = ref(null)
+  const selectedColonist = ref(null)
   const DRAG_THRESHOLD = 10
 
   let pointerDown = false
@@ -176,20 +177,34 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
 
   function selectBuilding(type) {
     selectedBuilding.value = type
+    selectedColonist.value = null
+  }
+
+  function selectColonist(id) {
+    selectedColonist.value = id
+    selectedBuilding.value = null
+  }
+
+  function clearColonistSelection() {
+    selectedColonist.value = null
   }
 
   function clearSelection() {
     selectedBuilding.value = null
+    selectedColonist.value = null
   }
 
   return {
     hoverTile,
     selectedBuilding,
+    selectedColonist,
     onPointerDown,
     onPointerMove,
     onPointerUp,
     onWheel,
     selectBuilding,
+    selectColonist,
+    clearColonistSelection,
     clearSelection,
   }
 }

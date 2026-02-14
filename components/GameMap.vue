@@ -34,6 +34,7 @@ const props = defineProps({
   terrainMap: Array,
   activeEvents: Array,
   buildableCells: Object,
+  selectedColonist: { type: Number, default: null },
 })
 
 const canvasRef = ref(null)
@@ -605,6 +606,7 @@ watch(() => props.camera.offsetX.value, markDirty)
 watch(() => props.camera.offsetY.value, markDirty)
 watch(() => props.camera.zoom.value, markDirty)
 watch(() => props.revealedTiles, markDirty)
+watch(() => props.selectedColonist, markDirty)
 
 // Re-center when grid dimensions change (after config loads)
 watch(
@@ -919,11 +921,26 @@ function render() {
       const colonist = colonistById.get(unit.colonistId)
       const roleColor = ROLES[colonist?.role]?.color || '#f59e0b'
       const initials = getColonistInitials(colonist?.name)
+      const isSelected = unit.colonistId === props.selectedColonist
       ctx.save()
-      const badgeR = Math.max(6, hexS * 0.23)
+      const badgeR = Math.max(6, hexS * (isSelected ? 0.27 : 0.23))
+
+      // Pulsing selection ring
+      if (isSelected) {
+        const pulse = 0.5 + 0.5 * Math.sin(now * 0.005)
+        const ringR = badgeR + 3 + pulse * 2
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.6 + pulse * 0.3})`
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(cx, cy - hexS * 0.28, ringR, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+
       ctx.fillStyle = roleColor
-      ctx.strokeStyle = 'rgba(15, 23, 42, 0.95)'
-      ctx.lineWidth = Math.max(1.3, z * 1.25)
+      ctx.strokeStyle = isSelected
+        ? 'rgba(255, 255, 255, 0.95)'
+        : 'rgba(15, 23, 42, 0.95)'
+      ctx.lineWidth = isSelected ? Math.max(1.8, z * 1.5) : Math.max(1.3, z * 1.25)
       ctx.beginPath()
       ctx.arc(cx, cy - hexS * 0.28, badgeR, 0, Math.PI * 2)
       ctx.fill()
@@ -946,6 +963,64 @@ function render() {
       )
       ctx.fill()
       ctx.restore()
+    }
+
+    // Layer 3b2: Move target marker + dashed line for selected colonist
+    if (props.selectedColonist) {
+      const selUnit = props.state.colonistUnits.find(
+        (u) => u.colonistId === props.selectedColonist,
+      )
+      if (
+        selUnit &&
+        selUnit.targetX != null &&
+        selUnit.targetY != null
+      ) {
+        const selColonist = colonistById.get(selUnit.colonistId)
+        const selColor = ROLES[selColonist?.role]?.color || '#f59e0b'
+        const fromX = hexScreenX(selUnit.x, z, ox)
+        const fromY = hexScreenY(selUnit.x, selUnit.y, z, oy)
+        const toX = hexScreenX(selUnit.targetX, z, ox)
+        const toY = hexScreenY(selUnit.targetX, selUnit.targetY, z, oy)
+
+        // Dashed line from colonist to target
+        ctx.save()
+        ctx.strokeStyle = selColor
+        ctx.globalAlpha = 0.5
+        ctx.lineWidth = Math.max(1.5, z * 1.2)
+        ctx.setLineDash([Math.max(4, hexS * 0.2), Math.max(3, hexS * 0.15)])
+        ctx.beginPath()
+        ctx.moveTo(fromX, fromY - hexS * 0.28)
+        ctx.lineTo(toX, toY)
+        ctx.stroke()
+        ctx.restore()
+
+        // Pulsing target crosshair
+        if (
+          selUnit.targetX >= minCol &&
+          selUnit.targetX <= maxCol &&
+          selUnit.targetY >= minRow &&
+          selUnit.targetY <= maxRow
+        ) {
+          const pulse = 0.5 + 0.5 * Math.sin(now * 0.006)
+          const crossR = Math.max(5, hexS * 0.2) + pulse * 2
+          ctx.save()
+          ctx.strokeStyle = selColor
+          ctx.globalAlpha = 0.6 + pulse * 0.3
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.arc(toX, toY, crossR, 0, Math.PI * 2)
+          ctx.stroke()
+          // Cross lines
+          const armLen = crossR * 0.6
+          ctx.beginPath()
+          ctx.moveTo(toX - armLen, toY)
+          ctx.lineTo(toX + armLen, toY)
+          ctx.moveTo(toX, toY - armLen)
+          ctx.lineTo(toX, toY + armLen)
+          ctx.stroke()
+          ctx.restore()
+        }
+      }
     }
   }
 
@@ -1184,6 +1259,16 @@ const canvasCursor = computed(() => {
     !props.revealedTiles.has(hover.gx + ',' + hover.gy)
   )
     return 'crosshair'
+
+  // Check if there's a colonist at this tile
+  const units = (props.state && props.state.colonistUnits) || []
+  const hasColonist = units.some(
+    (u) => u.x === hover.gx && u.y === hover.gy,
+  )
+  if (hasColonist) return 'pointer'
+
+  // If colonist is selected, show move cursor on revealed tiles
+  if (props.selectedColonist) return 'pointer'
 
   // Check if there's a building at this tile
   const placed = (props.state && props.state.placedBuildings) || []

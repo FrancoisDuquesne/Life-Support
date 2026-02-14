@@ -28,7 +28,12 @@ import {
   resolveAlienEvent,
   computeDefenseRating,
 } from '~/utils/defenseEngine'
-import { hexDistance, hexNeighbors, hexesInRadius } from '~/utils/hex'
+import {
+  hexDistance,
+  hexNeighbors,
+  hexesInRadius,
+  hexPathfind,
+} from '~/utils/hex'
 
 export const GRID_WIDTH = 64
 export const GRID_HEIGHT = 64
@@ -738,7 +743,14 @@ function syncColonistUnits(state) {
   const ly = landing?.y ?? Math.floor(GRID_HEIGHT / 2)
   for (const c of state.colonists || []) {
     if (!state.colonistUnits.some((u) => u.colonistId === c.id)) {
-      state.colonistUnits.push({ colonistId: c.id, x: lx, y: ly })
+      state.colonistUnits.push({
+        colonistId: c.id,
+        x: lx,
+        y: ly,
+        targetX: null,
+        targetY: null,
+        path: [],
+      })
     }
   }
 }
@@ -954,6 +966,9 @@ export function createColonyState(options = {}) {
     colonistId: c.id,
     x: landing.x + (idx % 2),
     y: landing.y + (idx > 0 ? 1 : 0),
+    targetX: null,
+    targetY: null,
+    path: [],
   }))
   const mdvCells = collectFootprintCells(
     landing.x,
@@ -1295,18 +1310,56 @@ export function processTick(state, terrainMap, revealedTiles) {
   const revealedSet = new Set(revealedTiles || [])
   const discovered = new Set(newRevealedTiles)
   for (const unit of state.colonistUnits || []) {
-    const neighbors = hexNeighbors(unit.x, unit.y).filter(
-      ([nx, ny]) => nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT,
-    )
-    const walkable = neighbors.filter(([nx, ny]) =>
-      revealedSet.has(`${nx},${ny}`),
-    )
-    if (walkable.length > 0) {
-      const idx = (state.tickCount + unit.colonistId) % walkable.length
-      const [nx, ny] = walkable[idx]
-      unit.x = nx
-      unit.y = ny
+    // Movement: targeted or random walk
+    if (unit.targetX != null && unit.targetY != null) {
+      if (unit.x === unit.targetX && unit.y === unit.targetY) {
+        // Arrived at target — clear and do random walk this tick
+        unit.targetX = null
+        unit.targetY = null
+        unit.path = []
+      } else if (unit.path && unit.path.length > 0) {
+        const next = unit.path.shift()
+        unit.x = next.x
+        unit.y = next.y
+      } else {
+        // No path remaining but not at target — recompute or clear
+        const newPath = hexPathfind(
+          unit.x,
+          unit.y,
+          unit.targetX,
+          unit.targetY,
+          null,
+          GRID_WIDTH,
+          GRID_HEIGHT,
+        )
+        if (newPath.length > 0) {
+          unit.path = newPath
+          const next = unit.path.shift()
+          unit.x = next.x
+          unit.y = next.y
+        } else {
+          unit.targetX = null
+          unit.targetY = null
+          unit.path = []
+        }
+      }
+    } else {
+      // Random walk (existing behavior)
+      const neighbors = hexNeighbors(unit.x, unit.y).filter(
+        ([nx, ny]) =>
+          nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT,
+      )
+      const walkable = neighbors.filter(([nx, ny]) =>
+        revealedSet.has(`${nx},${ny}`),
+      )
+      if (walkable.length > 0) {
+        const idx = (state.tickCount + unit.colonistId) % walkable.length
+        const [nx, ny] = walkable[idx]
+        unit.x = nx
+        unit.y = ny
+      }
     }
+    // Reveal adjacent tiles
     for (const [nx, ny] of hexNeighbors(unit.x, unit.y)) {
       if (nx < 0 || nx >= GRID_WIDTH || ny < 0 || ny >= GRID_HEIGHT) continue
       const key = `${nx},${ny}`
@@ -1595,6 +1648,42 @@ export function demolishAt(state, x, y) {
 }
 
 /**
+ * Set a colonist's move target. Computes A* path and stores it on the unit.
+ * Returns { success, message }.
+ */
+export function setColonistTarget(state, colonistId, targetX, targetY) {
+  const unit = (state.colonistUnits || []).find(
+    (u) => u.colonistId === colonistId,
+  )
+  if (!unit) return { success: false, message: 'Colonist not found' }
+  if (
+    targetX < 0 ||
+    targetX >= GRID_WIDTH ||
+    targetY < 0 ||
+    targetY >= GRID_HEIGHT
+  ) {
+    return { success: false, message: 'Target out of bounds' }
+  }
+  // Pathfind over the full grid — colonists can walk into unexplored fog
+  const path = hexPathfind(
+    unit.x,
+    unit.y,
+    targetX,
+    targetY,
+    null,
+    GRID_WIDTH,
+    GRID_HEIGHT,
+  )
+  if (path.length === 0 && (unit.x !== targetX || unit.y !== targetY)) {
+    return { success: false, message: 'No path found' }
+  }
+  unit.targetX = targetX
+  unit.targetY = targetY
+  unit.path = path
+  return { success: true }
+}
+
+/**
  * Convert internal state to snapshot for reactive UI.
  */
 export function toSnapshot(state) {
@@ -1638,7 +1727,13 @@ export function toSnapshot(state) {
     alienThreatLevel: state.alienThreatLevel || 0,
     alienEvents: (state.alienEvents || []).map((e) => ({ ...e })),
     colonists: colonists.map((c) => ({ ...c })),
-    colonistUnits: (state.colonistUnits || []).map((u) => ({ ...u })),
+    colonistUnits: (state.colonistUnits || []).map((u) => ({
+      colonistId: u.colonistId,
+      x: u.x,
+      y: u.y,
+      targetX: u.targetX ?? null,
+      targetY: u.targetY ?? null,
+    })),
     lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
     avgHealth:
       colonists.length > 0

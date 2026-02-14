@@ -336,6 +336,23 @@ const hoverColonistInfo = computed(() => {
     })
 })
 
+const selectedColonistInfo = computed(() => {
+  const id = interaction.selectedColonist.value
+  if (!id || !colony.state.value) return null
+  const colonist = (colony.state.value.colonists || []).find((c) => c.id === id)
+  const unit = (colony.state.value.colonistUnits || []).find(
+    (u) => u.colonistId === id,
+  )
+  if (!colonist || !unit) return null
+  return {
+    ...colonist,
+    x: unit.x,
+    y: unit.y,
+    targetX: unit.targetX,
+    targetY: unit.targetY,
+  }
+})
+
 const contextMenuItems = computed(() => {
   const building = contextMenu.value.building
   if (!building) return []
@@ -421,48 +438,76 @@ async function onTileClick(gx, gy, canvasX, canvasY) {
   if (!colony.state.value || !colony.state.value.alive) return
   if (!colony.revealedTiles.value.has(gx + ',' + gy)) return
 
+  // 1. Building placement has highest priority
   const sel = interaction.selectedBuilding.value
-  if (!sel) {
-    // No building selected — check if there's a building at this tile
-    const placed = colony.state.value.placedBuildings || []
-    const building = placed.find((b) =>
-      b.cells && b.cells.length > 0
-        ? b.cells.some((cell) => cell.x === gx && cell.y === gy)
-        : b.x === gx && b.y === gy,
-    )
+  if (sel) {
+    const info = colony.buildingsInfo.value.find((b) => b.id === sel)
+    if (!info || !colony.canAfford(info.cost)) return
 
-    // Convert canvas coords to viewport coords for menu positioning
-    const el = mapAreaRef.value
-    let screenX = canvasX || 0
-    let screenY = canvasY || 0
-    if (el) {
-      const rect = el.getBoundingClientRect()
-      screenX = rect.left + (canvasX || 0)
-      screenY = rect.top + (canvasY || 0)
-    }
-
-    if (building) {
-      // Tap on existing building → open context menu (upgrade/demolish)
-      contextMenu.value = {
-        open: true,
-        x: screenX,
-        y: screenY,
-        building: building,
-      }
-    } else {
-      // Tap on empty tile → open radial build menu
-      radialMenu.value = { open: true, x: screenX, y: screenY }
+    const result = await colony.buildAt(sel, gx, gy)
+    if (result && result.success !== false) {
+      colony.revealAround(gx, gy, 3)
+      interaction.clearSelection()
     }
     return
   }
 
-  const info = colony.buildingsInfo.value.find((b) => b.id === sel)
-  if (!info || !colony.canAfford(info.cost)) return
+  // 2. If a colonist is selected, left-click deselects (move is right-click)
+  if (interaction.selectedColonist.value) {
+    // Click on another colonist → re-select that one
+    const unitsAtTile = (colony.state.value.colonistUnits || []).filter(
+      (u) => u.x === gx && u.y === gy,
+    )
+    if (unitsAtTile.length > 0) {
+      const clickedId = unitsAtTile[0].colonistId
+      if (clickedId === interaction.selectedColonist.value) {
+        interaction.clearColonistSelection()
+      } else {
+        interaction.selectColonist(clickedId)
+      }
+      return
+    }
+    // Click elsewhere → deselect
+    interaction.clearColonistSelection()
+    return
+  }
 
-  const result = await colony.buildAt(sel, gx, gy)
-  if (result && result.success !== false) {
-    colony.revealAround(gx, gy, 3)
-    interaction.clearSelection()
+  // 3. No selection — check if tile has colonist(s) → select first
+  const unitsAtTile = (colony.state.value.colonistUnits || []).filter(
+    (u) => u.x === gx && u.y === gy,
+  )
+  if (unitsAtTile.length > 0) {
+    interaction.selectColonist(unitsAtTile[0].colonistId)
+    return
+  }
+
+  // 4. Check if there's a building → context menu
+  const placed = colony.state.value.placedBuildings || []
+  const building = placed.find((b) =>
+    b.cells && b.cells.length > 0
+      ? b.cells.some((cell) => cell.x === gx && cell.y === gy)
+      : b.x === gx && b.y === gy,
+  )
+
+  // Convert canvas coords to viewport coords for menu positioning
+  const el = mapAreaRef.value
+  let screenX = canvasX || 0
+  let screenY = canvasY || 0
+  if (el) {
+    const rect = el.getBoundingClientRect()
+    screenX = rect.left + (canvasX || 0)
+    screenY = rect.top + (canvasY || 0)
+  }
+
+  if (building) {
+    contextMenu.value = {
+      open: true,
+      x: screenX,
+      y: screenY,
+      building: building,
+    }
+  } else {
+    radialMenu.value = { open: true, x: screenX, y: screenY }
   }
 }
 
@@ -477,6 +522,15 @@ async function onTileDelete(gx, gy) {
 
 function onContextMenu(gx, gy, screenX, screenY) {
   if (!colony.state.value || !colony.state.value.alive) return
+
+  // If a colonist is selected, right-click issues a move command (even into fog)
+  const selectedColId = interaction.selectedColonist.value
+  if (selectedColId) {
+    colony.moveColonistTo(selectedColId, gx, gy)
+    interaction.clearColonistSelection()
+    return
+  }
+
   if (!colony.revealedTiles.value.has(gx + ',' + gy)) return
 
   // Find building at clicked coordinates
@@ -836,6 +890,7 @@ onUnmounted(() => {
           :terrain-map="colony.terrainMap.value"
           :active-events="colony.activeEvents.value"
           :buildable-cells="colony.buildableCells.value"
+          :selected-colonist="interaction.selectedColonist.value"
         />
         <!-- Build placement status bar -->
         <UAlert
@@ -857,6 +912,26 @@ onUnmounted(() => {
               variant="ghost"
               size="xs"
               @click="interaction.clearSelection()"
+              label="Cancel"
+            />
+          </template>
+        </UAlert>
+        <!-- Colonist selection status bar -->
+        <UAlert
+          v-if="selectedColonistInfo"
+          class="bg-muted absolute top-3 left-1/2 z-20 w-fit -translate-x-1/2 shadow-lg"
+          color="neutral"
+          variant="subtle"
+        >
+          <template #title>
+            {{ selectedColonistInfo.name }} selected — right-click to move
+          </template>
+          <template #actions>
+            <UButton
+              color="error"
+              variant="ghost"
+              size="xs"
+              @click="interaction.clearColonistSelection()"
               label="Cancel"
             />
           </template>

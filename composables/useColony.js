@@ -10,6 +10,7 @@ import {
   getBuildingsInfo as engineBuildingsInfo,
   computeResourceDeltas as engineDeltas,
   getUpgradeOptions as engineGetUpgradeOptions,
+  setColonistTarget,
   GRID_WIDTH,
   GRID_HEIGHT,
 } from '~/utils/gameEngine'
@@ -357,6 +358,16 @@ export function useColony() {
     return engineAvailableMissions(colony)
   })
 
+  function moveColonistTo(colonistId, x, y) {
+    if (!colony) return { success: false, message: 'Colony not initialized' }
+    const result = setColonistTarget(colony, colonistId, x, y)
+    if (result.success) {
+      state.value = toSnapshot(colony)
+      trySave()
+    }
+    return result
+  }
+
   function demolishAt(x, y) {
     if (!colony) return { success: false, message: 'Colony not initialized' }
     const result = engineDemolish(colony, x, y)
@@ -507,6 +518,7 @@ export function useColony() {
     getUpgradeOptions,
     launchMission,
     demolishAt,
+    moveColonistTo,
     resetColony,
     canAfford,
     revealAround,

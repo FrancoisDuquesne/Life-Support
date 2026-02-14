@@ -56,6 +56,84 @@ export function hexesInRadius(col, row, radius, gw, gh) {
   return result
 }
 
+/**
+ * A* pathfinding on hex grid.
+ * Returns array of {x, y} steps from start to target (excluding start, including target),
+ * or [] if unreachable.
+ * walkableSet: Set of "x,y" strings, or null to treat all in-bounds tiles as walkable.
+ */
+export function hexPathfind(sx, sy, tx, ty, walkableSet, gw, gh) {
+  if (sx === tx && sy === ty) return []
+  const startKey = sx + ',' + sy
+  const targetKey = tx + ',' + ty
+  if (walkableSet && !walkableSet.has(targetKey)) return []
+
+  const MAX_ITER = 2000
+  const gScore = new Map()
+  gScore.set(startKey, 0)
+  const fScore = new Map()
+  const h = hexDistance(sx, sy, tx, ty)
+  fScore.set(startKey, h)
+  const cameFrom = new Map()
+
+  // Simple priority queue using sorted array (sufficient for hex grids)
+  const open = [{ key: startKey, x: sx, y: sy, f: h }]
+  const closed = new Set()
+  let iter = 0
+
+  while (open.length > 0 && iter < MAX_ITER) {
+    iter++
+    // Find node with lowest f
+    let bestIdx = 0
+    for (let i = 1; i < open.length; i++) {
+      if (open[i].f < open[bestIdx].f) bestIdx = i
+    }
+    const current = open[bestIdx]
+    open.splice(bestIdx, 1)
+
+    if (current.key === targetKey) {
+      // Reconstruct path
+      const path = []
+      let k = targetKey
+      while (cameFrom.has(k)) {
+        const [px, py] = k.split(',').map(Number)
+        path.push({ x: px, y: py })
+        k = cameFrom.get(k)
+      }
+      path.reverse()
+      return path
+    }
+
+    closed.add(current.key)
+    const neighbors = hexNeighbors(current.x, current.y)
+    for (const [nx, ny] of neighbors) {
+      if (nx < 0 || nx >= gw || ny < 0 || ny >= gh) continue
+      const nKey = nx + ',' + ny
+      if (closed.has(nKey)) continue
+      if (walkableSet && !walkableSet.has(nKey)) continue
+
+      const tentativeG = (gScore.get(current.key) || 0) + 1
+      const prevG = gScore.get(nKey)
+      if (prevG !== undefined && tentativeG >= prevG) continue
+
+      cameFrom.set(nKey, current.key)
+      gScore.set(nKey, tentativeG)
+      const f = tentativeG + hexDistance(nx, ny, tx, ty)
+      fScore.set(nKey, f)
+
+      // Add to open if not already there (or update)
+      const existing = open.find((n) => n.key === nKey)
+      if (existing) {
+        existing.f = f
+      } else {
+        open.push({ key: nKey, x: nx, y: ny, f })
+      }
+    }
+  }
+
+  return [] // No path found
+}
+
 // Seeded PRNG (simple mulberry32)
 export function mulberry32(seed) {
   return function () {
