@@ -121,7 +121,7 @@ function prereqLabel(tech) {
                   label="Done"
                 />
               </div>
-              <div class="text-muted mt-0.5 text-[10px] leading-tight">
+              <div class="text-muted mt-0.5 text-xs leading-tight">
                 {{ tech.description }}
               </div>
               <div
@@ -130,7 +130,7 @@ function prereqLabel(tech) {
               >
                 <ResourceIcon resource="research" size="xs" />
                 <span
-                  class="text-[10px] font-medium tabular-nums"
+                  class="text-xs font-medium tabular-nums"
                   :class="
                     researchPoints >= tech.cost ? 'text-primary' : 'text-muted'
                   "
@@ -140,7 +140,7 @@ function prereqLabel(tech) {
               </div>
               <div
                 v-if="prereqLabel(tech)"
-                class="text-warning mt-0.5 text-[10px] leading-tight"
+                class="text-warning mt-0.5 text-xs leading-tight"
               >
                 {{ prereqLabel(tech) }}
               </div>
@@ -177,7 +177,7 @@ function prereqLabel(tech) {
                   label="Done"
                 />
               </div>
-              <div class="text-muted mt-0.5 text-[10px] leading-tight">
+              <div class="text-muted mt-0.5 text-xs leading-tight">
                 {{ tech.description }}
               </div>
               <div
@@ -186,7 +186,7 @@ function prereqLabel(tech) {
               >
                 <ResourceIcon resource="research" size="xs" />
                 <span
-                  class="text-[10px] font-medium tabular-nums"
+                  class="text-xs font-medium tabular-nums"
                   :class="
                     researchPoints >= tech.cost ? 'text-primary' : 'text-muted'
                   "
@@ -196,7 +196,7 @@ function prereqLabel(tech) {
               </div>
               <div
                 v-if="prereqLabel(tech)"
-                class="text-warning mt-0.5 text-[10px] leading-tight"
+                class="text-warning mt-0.5 text-xs leading-tight"
               >
                 {{ prereqLabel(tech) }}
               </div>
