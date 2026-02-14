@@ -432,18 +432,18 @@ export function computeRoleBonuses(state) {
 }
 
 /**
- * Get individual colonist work efficiency (0-1).
+ * Get individual colonist work efficiency (0.3-1.0).
+ * Smooth gradient based on health and morale.
  */
 export function getColonistEfficiency(colonist) {
-  let eff = 1.0
-  if (colonist.health < 30) eff *= 0.5
-  if (colonist.morale < 20) eff *= 0.7
-  return eff
+  const healthFactor = 0.5 + 0.5 * (colonist.health / 100)
+  const moraleFactor = 0.6 + 0.4 * (colonist.morale / 100)
+  return healthFactor * moraleFactor
 }
 
 /**
  * Compute colony-wide efficiency factor from average colonist health/morale.
- * Returns a multiplier 0-1.
+ * Returns a multiplier 0.3-1.0 using smooth gradient per colonist.
  */
 export function computeColonyEfficiency(colonists) {
   if (!colonists || colonists.length === 0) return 1.0
@@ -452,22 +452,36 @@ export function computeColonyEfficiency(colonists) {
   const present = colonists.filter((c) => !c.onMission)
   if (present.length === 0) return 1.0
 
-  let totalHealthFactor = 0
-  let totalMoraleFactor = 0
-
+  let totalEff = 0
   for (const c of present) {
-    totalHealthFactor += c.health < 30 ? 0.5 : 1.0
-    totalMoraleFactor += c.morale < 20 ? 0.7 : 1.0
+    totalEff += getColonistEfficiency(c)
   }
-
-  const avgHealth = totalHealthFactor / present.length
-  const avgMorale = totalMoraleFactor / present.length
-  return avgHealth * avgMorale
+  return totalEff / present.length
 }
 
 // --- Population Growth ---
 
-const POPULATION_GROWTH_INTERVAL_TICKS = 10
+const BASE_GROWTH_INTERVAL = 10
+const MIN_GROWTH_INTERVAL = 5
+
+/**
+ * Compute population growth interval based on resource surplus and morale.
+ * More surplus = faster growth (10 ticks base, 5 ticks minimum).
+ */
+function getGrowthInterval(state) {
+  let interval = BASE_GROWTH_INTERVAL
+  const res = state.resources || {}
+  if ((res.food || 0) > 40) interval--
+  if ((res.water || 0) > 40) interval--
+  if ((res.oxygen || 0) > 40) interval--
+  if (state.colonists && state.colonists.length > 0) {
+    const avgMorale =
+      state.colonists.reduce((s, c) => s + c.morale, 0) / state.colonists.length
+    if (avgMorale > 70) interval--
+    if (avgMorale > 90) interval--
+  }
+  return Math.max(MIN_GROWTH_INTERVAL, interval)
+}
 
 /**
  * Check if a new colonist should arrive. Returns colonist or null.
@@ -500,11 +514,8 @@ export function checkPopulationGrowth(state, modifiers, terrainMap, gridWidth) {
   if (pop >= (state.populationCapacity || 10)) return null
 
   const lastArrivalTick = state.lastColonistArrivalTick ?? 0
-  if (
-    (state.tickCount || 0) - lastArrivalTick <
-    POPULATION_GROWTH_INTERVAL_TICKS
-  )
-    return null
+  const growthInterval = getGrowthInterval(state)
+  if ((state.tickCount || 0) - lastArrivalTick < growthInterval) return null
 
   // Require avg morale > 40 for growth
   if (state.colonists.length > 0) {

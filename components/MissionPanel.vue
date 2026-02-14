@@ -73,7 +73,7 @@ function missionTimeLeft(mission) {
             <span class="text-highlighted text-xs font-semibold">{{
               m.type.replace(/_/g, ' ')
             }}</span>
-            <span class="text-muted text-[10px] tabular-nums"
+            <span class="text-muted text-xs tabular-nums"
               >{{ missionTimeLeft(m) }}t left</span
             >
           </div>
@@ -108,7 +108,7 @@ function missionTimeLeft(mission) {
               <div class="text-highlighted text-xs font-semibold">
                 {{ m.name }}
               </div>
-              <div class="text-muted text-[10px] leading-snug">
+              <div class="text-muted text-xs leading-snug">
                 {{ m.description }}
               </div>
             </div>
@@ -147,7 +147,7 @@ function missionTimeLeft(mission) {
           @click="cancelSelection"
         />
       </div>
-      <p class="text-muted mb-2 text-[10px]">
+      <p class="text-muted mb-2 text-xs">
         Select {{ selectedMission.requiredColonists }} colonist{{
           selectedMission.requiredColonists > 1 ? 's' : ''
         }}
@@ -168,7 +168,7 @@ function missionTimeLeft(mission) {
           @click="toggleColonist(c.id)"
         >
           <span
-            class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
+            class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
             :style="{ backgroundColor: ROLES[c.role]?.color || '#888' }"
           >
             {{ ROLES[c.role]?.abbr || '?' }}

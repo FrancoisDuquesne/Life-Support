@@ -32,12 +32,12 @@ export const TECHS = [
   {
     id: 'fusion_theory',
     name: 'Fusion Theory',
-    description: 'RTGs produce 2x energy',
+    description: 'RTGs produce 40% more energy',
     branch: 'engineering',
     tier: 3,
     cost: 70,
     requires: ['advanced_materials'],
-    effects: { rtgProductionMult: 2.0 },
+    effects: { rtgProductionMult: 1.4 },
   },
 
   // --- Biology (Life Support) ---
@@ -64,12 +64,12 @@ export const TECHS = [
   {
     id: 'atmospheric_processors',
     name: 'Atmospheric Processors',
-    description: '+50% oxygen prod, +2 pop cap/habitat',
+    description: '+75% oxygen prod, +3 pop cap/habitat',
     branch: 'biology',
     tier: 3,
     cost: 70,
     requires: ['closed_loop_water'],
-    effects: { oxygenProductionMult: 1.5, habitatCapacityBonus: 2 },
+    effects: { oxygenProductionMult: 1.75, habitatCapacityBonus: 3 },
   },
 
   // --- Geology (Industry) ---

@@ -234,10 +234,7 @@ defineExpose({ openDetail })
       />
     </div>
     <!-- Growth blockers -->
-    <div
-      v-if="growthBlockers.length > 0"
-      class="mt-1 text-[10px] leading-tight"
-    >
+    <div v-if="growthBlockers.length > 0" class="mt-1 text-xs leading-tight">
       <span class="text-warning font-medium">Growth blocked:</span>
       <span class="text-muted"> {{ growthBlockers.join(', ') }}</span>
     </div>

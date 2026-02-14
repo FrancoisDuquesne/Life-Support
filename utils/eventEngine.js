@@ -123,7 +123,7 @@ export function applyEventStart(state, event, revealedTiles) {
       return applyMeteorStrike(state, event, revealedTiles)
 
     case 'SOLAR_FLARE':
-      return '[FLARE] Solar flare detected! Energy +30%, but population growth blocked for 3 ticks.'
+      return '[FLARE] Solar flare detected! Energy +15%, but population growth blocked for 3 ticks.'
 
     case 'EQUIPMENT_FAILURE':
       return applyEquipmentFailure(state, event)
@@ -219,15 +219,7 @@ function applyResourceDiscovery(state, event, revealedTiles) {
 
   for (const key of revealedTiles) {
     const [cx, cy] = key.split(',').map(Number)
-    const neighbors = [
-      [cx + 1, cy - 1],
-      [cx + 1, cy],
-      [cx, cy + 1],
-      [cx - 1, cy],
-      [cx - 1, cy - 1],
-      [cx, cy - 1],
-    ]
-    // Adjust for odd-q offset
+    // Odd-q offset hex neighbors
     const parity = cx & 1
     const offsets =
       parity === 0
@@ -262,8 +254,12 @@ function applyResourceDiscovery(state, event, revealedTiles) {
 
   const rng = mulberry32(state.terrainSeed * 23 + state.tickCount * 11)
   const count = Math.min(frontier.length, 5 + Math.floor(rng() * 4)) // 5-8 tiles
-  const shuffled = frontier.sort(() => rng() - 0.5)
-  const revealed = shuffled.slice(0, count)
+  // Fisher-Yates shuffle with seeded PRNG for determinism
+  for (let i = frontier.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[frontier[i], frontier[j]] = [frontier[j], frontier[i]]
+  }
+  const revealed = frontier.slice(0, count)
 
   event.data.revealedTiles = revealed
 
@@ -288,7 +284,7 @@ export function getActiveModifiers(state) {
         mods.solarMultiplier *= 0.5
         break
       case 'SOLAR_FLARE':
-        mods.energyMultiplier *= 1.3
+        mods.energyMultiplier *= 1.15
         mods.blockPopulationGrowth = true
         break
     }

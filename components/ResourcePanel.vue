@@ -147,7 +147,7 @@ function formatSignedDelta(value) {
           r.delta < 0 ? 'ring-error/70 bg-error/10 animate-pulse ring-1' : '',
         ]"
       >
-        <span class="text-muted text-[9px] leading-none font-medium">{{
+        <span class="text-muted text-xs leading-none font-medium">{{
           abbrev[r.key]
         }}</span>
         <span
@@ -159,7 +159,7 @@ function formatSignedDelta(value) {
         >
         <span
           :class="[
-            'text-[9px] leading-tight font-bold tabular-nums',
+            'text-xs leading-tight font-bold tabular-nums',
             r.delta > 0
               ? 'text-success'
               : r.delta < 0
@@ -171,7 +171,7 @@ function formatSignedDelta(value) {
         </span>
         <span
           v-if="r.ticksLeft !== null && r.ticksLeft <= DEPLETION_WARN_TICKS"
-          class="text-error text-[9px] leading-none font-bold tabular-nums"
+          class="text-error text-xs leading-none font-bold tabular-nums"
         >
           {{ r.ticksLeft <= 0 ? '!' : `${r.ticksLeft}t` }}
         </span>
@@ -227,7 +227,7 @@ function formatSignedDelta(value) {
                 v-if="
                   r.ticksLeft !== null && r.ticksLeft <= DEPLETION_WARN_TICKS
                 "
-                class="text-error bg-error/15 rounded px-1 text-[10px] font-bold tabular-nums"
+                class="text-error bg-error/15 rounded px-1 text-xs font-bold tabular-nums"
               >
                 {{ r.ticksLeft <= 0 ? 'EMPTY' : `${r.ticksLeft}t left` }}
               </span>

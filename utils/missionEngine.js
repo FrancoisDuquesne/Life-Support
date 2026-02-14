@@ -1,5 +1,6 @@
 // Mission dispatch and resolution system — pure JS, no Vue dependencies
 import { mulberry32, hexesInRadius } from '~/utils/hex'
+import { GRID_WIDTH, GRID_HEIGHT } from '~/utils/gameEngine'
 
 export const MISSION_TYPES = {
   EXPLORE_SECTOR: {
@@ -8,7 +9,7 @@ export const MISSION_TYPES = {
     description: 'Send a scout to map nearby terrain',
     duration: 8,
     requiredColonists: 1,
-    risk: 0.1,
+    risk: 0.2,
     preferredRole: 'GEOLOGIST',
     rewards: { revealRadius: 6, depositChance: 0.3 },
   },
@@ -18,7 +19,7 @@ export const MISSION_TYPES = {
     description: 'Expedition to collect mineral deposits',
     duration: 12,
     requiredColonists: 2,
-    risk: 0.15,
+    risk: 0.3,
     preferredRole: 'GEOLOGIST',
     rewards: { minerals: [30, 60], research: [2, 8] },
   },
@@ -28,7 +29,7 @@ export const MISSION_TYPES = {
     description: 'Study an anomalous signal or site',
     duration: 15,
     requiredColonists: 2,
-    risk: 0.2,
+    risk: 0.35,
     preferredRole: 'ENGINEER',
     rewards: { research: [10, 25], techUnlockChance: 0.4 },
   },
@@ -38,7 +39,7 @@ export const MISSION_TYPES = {
     description: 'Recover useful materials from a crash site',
     duration: 10,
     requiredColonists: 1,
-    risk: 0.12,
+    risk: 0.25,
     preferredRole: 'ENGINEER',
     rewards: { minerals: [15, 40] },
   },
@@ -48,7 +49,7 @@ export const MISSION_TYPES = {
     description: 'Comprehensive geological survey of a wide area',
     duration: 20,
     requiredColonists: 3,
-    risk: 0.05,
+    risk: 0.15,
     preferredRole: 'GEOLOGIST',
     rewards: { revealRadius: 12, guaranteedDeposits: 2 },
   },
@@ -163,8 +164,8 @@ export function processMissionTick(state, terrainMap, revealedTiles) {
         mission.targetX,
         mission.targetY,
         rewards.revealRadius,
-        64,
-        64,
+        GRID_WIDTH,
+        GRID_HEIGHT,
       )
       for (const [rx, ry] of revealed) {
         const key = `${rx},${ry}`

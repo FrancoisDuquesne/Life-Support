@@ -209,7 +209,7 @@ function onCardLeave() {
         <!-- Turns until affordable badge -->
         <span
           v-if="!canAfford(b.cost)"
-          class="bg-warning/90 absolute -top-1 -left-1 z-10 flex h-4.5 items-center rounded-full px-1.5 text-[10px] font-bold text-black"
+          class="bg-warning/90 absolute -top-1 -left-1 z-10 flex h-4.5 items-center rounded-full px-1.5 text-xs font-bold text-black"
         >
           {{ availabilityLabel(b.cost) }}
         </span>
@@ -232,7 +232,7 @@ function onCardLeave() {
           <span
             v-for="(amount, res) in b.cost"
             :key="`cost-${b.id}-${res}`"
-            class="text-muted inline-flex items-center gap-0.5 text-[10px] tabular-nums"
+            class="text-muted inline-flex items-center gap-0.5 text-xs tabular-nums"
           >
             <ResourceIcon :resource="res" size="xs" />{{ amount }}
           </span>
@@ -274,7 +274,7 @@ function onCardLeave() {
               />
               <span
                 :class="[
-                  'min-w-10 text-right text-[10px] font-bold tabular-nums',
+                  'min-w-10 text-right text-xs font-bold tabular-nums',
                   getResourceVal(res) >= amount ? 'text-success' : 'text-error',
                 ]"
               >
@@ -296,7 +296,7 @@ function onCardLeave() {
             <span
               v-for="(amount, res) in hoveredBuilding.produces"
               :key="`detail-prod-${res}`"
-              class="text-success border-success/35 bg-success/8 inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] tabular-nums"
+              class="text-success border-success/35 bg-success/8 inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-xs tabular-nums"
             >
               <ResourceIcon :resource="res" size="xs" />
               +{{ amount }}/t
@@ -304,7 +304,7 @@ function onCardLeave() {
             <span
               v-for="(amount, res) in hoveredBuilding.consumes"
               :key="`detail-cons-${res}`"
-              class="text-error border-error/35 bg-error/8 inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] tabular-nums"
+              class="text-error border-error/35 bg-error/8 inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-xs tabular-nums"
             >
               <ResourceIcon :resource="res" size="xs" />
               -{{ amount }}/t
@@ -314,7 +314,7 @@ function onCardLeave() {
           <!-- Special text -->
           <div
             v-if="hoveredBuilding.special"
-            class="text-primary mt-1.5 text-[10px] font-medium"
+            class="text-primary mt-1.5 text-xs font-medium"
           >
             {{ hoveredBuilding.special }}
           </div>

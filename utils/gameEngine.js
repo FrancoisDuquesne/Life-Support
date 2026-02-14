@@ -109,8 +109,8 @@ export const BUILDING_TYPES = [
     id: 'MINE',
     name: 'Mining Facility',
     description: 'Extracts minerals from the ground',
-    cost: { minerals: 8 },
-    produces: { minerals: 8 },
+    cost: { minerals: 15 },
+    produces: { minerals: 5 },
     consumes: { energy: 4 },
     footprintSize: 2,
     buildTime: 3,
@@ -222,16 +222,16 @@ export const UPGRADE_TREES = {
       {
         id: 'storm_hardening',
         name: 'Storm Hardening',
-        desc: 'Immune to dust storms',
-        prodMult: 1.0,
+        desc: '+50% production, immune to dust storms',
+        prodMult: 1.5,
         consMult: 1.0,
         dustImmune: true,
       },
       {
         id: 'overcharge',
         name: 'Overcharge',
-        desc: '+150% production',
-        prodMult: 2.5,
+        desc: '+100% production',
+        prodMult: 2.0,
         consMult: 1.0,
       },
     ],
@@ -382,8 +382,8 @@ export const UPGRADE_TREES = {
       {
         id: 'enhanced_core',
         name: 'Enhanced Core',
-        desc: '+80% energy output',
-        prodMult: 1.8,
+        desc: '+50% energy output',
+        prodMult: 1.5,
         consMult: 1.0,
       },
       {
@@ -399,8 +399,8 @@ export const UPGRADE_TREES = {
       {
         id: 'fusion_prototype',
         name: 'Fusion Prototype',
-        desc: '+200% energy',
-        prodMult: 3.0,
+        desc: '+100% energy',
+        prodMult: 2.0,
         consMult: 1.0,
       },
       {
@@ -839,6 +839,7 @@ export function getBuildableCells(state) {
 }
 
 function isBuildingActive(pb, tickCount) {
+  if (pb.isUnderConstruction) return false
   if (pb.disabledUntilTick && pb.disabledUntilTick > tickCount) return false
   return true
 }
@@ -873,7 +874,7 @@ export function findLandingSite(terrainMap, targetX, targetY) {
       const tile = getTerrainAt(terrainMap, x, y, GRID_WIDTH)
       if (!tile || tile.terrain?.id !== 'PLAINS') continue
       if (tile.hazard) continue
-      const dist = Math.abs(x - centerX) + Math.abs(y - centerY)
+      const dist = hexDistance(x, y, centerX, centerY)
       if (!best || dist < best.dist) {
         best = { x, y, dist }
       }
@@ -1289,7 +1290,6 @@ export function processTick(state, terrainMap, revealedTiles) {
   clampResourcesNonNegative(state.resources)
 
   // 7-10. Production, consumption, population drain, waste (shared with UI deltas)
-  const modifiers = getActiveModifiers(state)
   const deltas = computeResourceDeltas(state, terrainMap)
   for (const key of RESOURCE_KEYS) {
     state.resources[key] = (state.resources[key] || 0) + (deltas[key] || 0)
@@ -1316,27 +1316,6 @@ export function processTick(state, terrainMap, revealedTiles) {
   if (state.resources.energy < 0) {
     state.resources.energy = 0
     events += 'WARNING: Power shortage! '
-  }
-
-  if (state.colonists && state.colonists.length === 0) {
-    state.alive = false
-    if (state.resources.oxygen <= 0) {
-      state.collapseReason = createCollapseReason(
-        'All colonists died from oxygen loss.',
-        'Prioritize Oxygen Generators and keep a buffer of water + energy to avoid chain failures.',
-      )
-    } else if (state.resources.water <= 0) {
-      state.collapseReason = createCollapseReason(
-        'All colonists died from dehydration.',
-        'Secure Water Extractors early and keep backup energy so extraction never halts.',
-      )
-    } else {
-      state.collapseReason = createCollapseReason(
-        'All colonists have died.',
-        'Watch warning events and keep food, water, and oxygen safely above demand.',
-      )
-    }
-    events += `COLONY COLLAPSED: ${state.collapseReason.cause} `
   }
 
   // 12b. Process missions
@@ -1374,7 +1353,7 @@ export function processTick(state, terrainMap, revealedTiles) {
   if (state.colonists) {
     const newColonist = checkPopulationGrowth(
       state,
-      modifiers,
+      getActiveModifiers(state),
       terrainMap,
       GRID_WIDTH,
     )
@@ -1887,20 +1866,20 @@ export function toSnapshot(state) {
         ? Math.round(
             colonists.reduce((s, c) => s + c.health, 0) / colonists.length,
           )
-        : 100,
+        : 0,
     avgMorale:
       colonists.length > 0
         ? Math.round(
             colonists.reduce((s, c) => s + c.morale, 0) / colonists.length,
           )
-        : 100,
+        : 0,
   }
 }
 
 /**
  * Compute territory map from multiple faction states.
  * Each faction's completed buildings project influence in a 3-hex radius.
- * Returns Map<"x,y", factionId> — ties broken by building count within 5 hexes.
+ * Returns Map<"x,y", factionId> — ties broken by total influence count.
  */
 export function computeTerritoryMap(factions) {
   const INFLUENCE_RADIUS = 3

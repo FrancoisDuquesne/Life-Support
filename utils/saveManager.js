@@ -2,6 +2,7 @@
 import { FIRST_NAMES, LAST_NAMES, ROLES } from '~/utils/colonistEngine'
 import { mulberry32 } from '~/utils/hex'
 import { getFootprintCellsForType } from '~/utils/gameEngine'
+import { getTechEffects } from '~/utils/techTree'
 
 const SAVE_KEY = 'life-support-save'
 const SAVE_VERSION = 10
@@ -43,6 +44,8 @@ function serializeColonyState(state) {
     terrainSeed: state.terrainSeed,
     activeEvents: state.activeEvents || [],
     nextEventId: state.nextEventId || 1,
+    pendingMeteor: state.pendingMeteor || null,
+    collapseReason: state.collapseReason || null,
     lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
     colonistUnits: (state.colonistUnits || []).map((u) => ({
       colonistId: u.colonistId,
@@ -269,11 +272,13 @@ function migrateV7toV8(data) {
  */
 function migrateV8toV9(data) {
   const s = data.state
-  // Recalculate populationCapacity: base 10 + 10 per completed habitat
+  // Recalculate populationCapacity: base 10 + (10 + tech bonus) per completed habitat
+  const techEffects = getTechEffects(s.unlockedTechs || [])
   const habitatCount = (s.placedBuildings || []).filter(
     (pb) => pb.type === 'HABITAT',
   ).length
-  s.populationCapacity = 10 + habitatCount * 10
+  s.populationCapacity =
+    10 + habitatCount * (10 + techEffects.habitatCapacityBonus)
   // Add outpost_hub building count
   if (s.buildings) {
     if (s.buildings.outpost_hub === undefined) s.buildings.outpost_hub = 0
@@ -317,6 +322,8 @@ function deserializeColonyState(s) {
     terrainSeed: s.terrainSeed,
     activeEvents: s.activeEvents || [],
     nextEventId: s.nextEventId || 1,
+    pendingMeteor: s.pendingMeteor || null,
+    collapseReason: s.collapseReason || null,
     lastColonistArrivalTick: s.lastColonistArrivalTick || 0,
     colonistUnits: (s.colonistUnits || []).map((u) => ({
       colonistId: u.colonistId,

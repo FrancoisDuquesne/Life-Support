@@ -103,7 +103,7 @@ export function rollAlienEvent(state) {
       )
 
       return {
-        id: state.nextEventId || 1,
+        id: 'alien_' + (state.nextEventId || 1),
         type: evtType.id,
         startTick: state.tickCount,
         endTick: state.tickCount + evtType.duration,

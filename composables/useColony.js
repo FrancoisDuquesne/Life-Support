@@ -458,7 +458,10 @@ export function useColony() {
     // 4. Check victory conditions
     checkVictory()
 
-    trySave()
+    // Throttle saves in competitive mode (every 5 ticks instead of every tick)
+    if (colony.tickCount % 5 === 0 || isGameOver.value) {
+      trySave()
+    }
   }
 
   /**
