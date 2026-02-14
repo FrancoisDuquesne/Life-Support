@@ -32,7 +32,8 @@ export const ALIEN_EVENT_TYPES = {
     threat: 30,
     duration: 8,
     moralePenalty: 5,
-    productionPenalty: 0,
+    productionPenalty: 0.15,
+    damage: 25,
     damagePerTick: 10,
     blocksExpansion: true,
   },
@@ -172,6 +173,17 @@ export function resolveAlienEvent(state, event) {
         `[ALIEN] ${evtType.name} disabled ${target.type.replace(/_/g, ' ')} at (${target.x},${target.y}) for ${disableTicks} ticks`,
       )
     }
+  }
+
+  // Apply production penalty (siege reduces all production)
+  if (evtType.productionPenalty && damageScale > 0) {
+    event.productionPenalty = evtType.productionPenalty * damageScale
+  }
+
+  // Siege blocks expansion (prevents building)
+  if (evtType.blocksExpansion && damageScale > 0) {
+    event.blocksExpansion = true
+    messages.push(`[ALIEN] ${evtType.name} is blocking colony expansion!`)
   }
 
   if (defenseRatio > 0 && defenseRatio < 1.0) {

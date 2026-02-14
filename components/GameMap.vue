@@ -46,6 +46,7 @@ const props = defineProps({
 })
 
 const canvasRef = ref(null)
+let canvasCtx = null
 let animId = null
 let dirty = true
 let lastPlacedCount = 0
@@ -634,7 +635,8 @@ function render() {
 
   const canvas = canvasRef.value
   if (!canvas) return
-  const ctx = canvas.getContext('2d')
+  if (!canvasCtx) canvasCtx = canvas.getContext('2d')
+  const ctx = canvasCtx
   const cam = props.camera
   const gw = props.gridWidth || 32
   const gh = props.gridHeight || 32
@@ -823,12 +825,13 @@ function render() {
     }
   }
 
-  // Layer 2d: Faction borders (competitive mode)
+  // Layer 2d: Faction borders (competitive mode, deduplicated)
   if (
     props.gameMode === 'competitive' &&
     props.territoryMap &&
     props.territoryMap.size > 0
   ) {
+    const drawnBorders = new Set()
     for (let row = minRow; row <= maxRow; row++) {
       for (let col = minCol; col <= maxCol; col++) {
         if (revealed && !revealed.has(col + ',' + row)) continue
@@ -841,6 +844,9 @@ function render() {
           const nKey = nx + ',' + ny
           const nOwner = props.territoryMap.get(nKey)
           if (nOwner && nOwner !== owner) {
+            const bKey = key < nKey ? `${key}|${nKey}` : `${nKey}|${key}`
+            if (drawnBorders.has(bKey)) continue
+            drawnBorders.add(bKey)
             const cx1 = hexScreenX(col, z, ox)
             const cy1 = hexScreenY(col, row, z, oy)
             const cx2 = hexScreenX(nx, z, ox)
@@ -1493,6 +1499,7 @@ const canvasCursor = computed(() => {
 onMounted(() => {
   const canvas = canvasRef.value
   if (canvas) {
+    canvasCtx = canvas.getContext('2d')
     props.camera.centerOn(canvas.clientWidth, canvas.clientHeight)
     dirty = true
   }

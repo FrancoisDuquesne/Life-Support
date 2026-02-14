@@ -58,6 +58,7 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
     if (e.touches && e.touches.length === 2) {
       pinchStartDist = getTouchDist(e)
       pinchStartZoom = camera.zoom.value
+      pointerDown = false // Cancel any pending click from first finger
       cancelLongPress()
       return
     }
@@ -92,9 +93,10 @@ export function useGridInteraction(camera, gridWidth, gridHeight) {
   function onPointerMove(canvas, e) {
     const coords = getCanvasCoords(canvas, e)
 
-    // Pinch zoom — cancel long-press
+    // Pinch zoom — cancel long-press and click
     if (e.touches && e.touches.length === 2) {
       cancelLongPress()
+      pointerDown = false // Prevent click on finger lift
       const dist = getTouchDist(e)
       if (pinchStartDist > 0) {
         const center = getTouchCenter(canvas, e)

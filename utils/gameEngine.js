@@ -1144,6 +1144,18 @@ export function computeResourceDeltas(state, terrainMap) {
     }
   }
 
+  // Apply siege production penalty from active alien events
+  if (state.alienEvents) {
+    for (const evt of state.alienEvents) {
+      if (evt.productionPenalty && evt.endTick >= (state.tickCount || 0)) {
+        const penalty = 1 - evt.productionPenalty
+        for (const key of RESOURCE_KEYS) {
+          if (deltas[key] > 0) deltas[key] *= penalty
+        }
+      }
+    }
+  }
+
   // Population drain
   const pop = getPopulation(state)
   deltas.food -= pop > 0 ? Math.max(1, Math.floor(pop / 2)) : 0
@@ -1360,7 +1372,12 @@ export function processTick(state, terrainMap, revealedTiles) {
 
   // 13. Population growth — create new colonist
   if (state.colonists) {
-    const newColonist = checkPopulationGrowth(state, modifiers)
+    const newColonist = checkPopulationGrowth(
+      state,
+      modifiers,
+      terrainMap,
+      GRID_WIDTH,
+    )
     if (newColonist) {
       state.colonists.push(newColonist)
       state.lastColonistArrivalTick = state.tickCount
@@ -1513,6 +1530,16 @@ export function validateBuildPlacement(
   if (!bType) return { ok: false, message: `Unknown building type: ${type}` }
   if (bType.buildable === false) {
     return { ok: false, message: `${bType.name} cannot be built manually` }
+  }
+
+  // Check if an active siege is blocking expansion
+  if (state.alienEvents) {
+    const hasSiege = state.alienEvents.some(
+      (e) => e.blocksExpansion && e.endTick >= (state.tickCount || 0),
+    )
+    if (hasSiege) {
+      return { ok: false, message: 'Alien siege is blocking construction!' }
+    }
   }
   if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) {
     return { ok: false, message: `Invalid coordinates (${x},${y})` }

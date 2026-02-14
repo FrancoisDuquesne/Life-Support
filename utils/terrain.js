@@ -55,7 +55,7 @@ export const DEPOSIT_TYPES = {
     id: 'RARE_EARTH',
     name: 'Rare Earth Deposit',
     resource: 'research',
-    multiplier: 1.0,
+    multiplier: 1.5,
   },
 }
 

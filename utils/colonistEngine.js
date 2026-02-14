@@ -472,12 +472,28 @@ const POPULATION_GROWTH_INTERVAL_TICKS = 10
 /**
  * Check if a new colonist should arrive. Returns colonist or null.
  */
-export function checkPopulationGrowth(state, modifiers) {
+export function checkPopulationGrowth(state, modifiers, terrainMap, gridWidth) {
   const pop = state.colonists.length
   const res = state.resources || {}
 
   if (!state.alive) return null
   if (modifiers.blockPopulationGrowth) return null
+
+  // Radiation hazard blocks growth if any habitat is on a radiation tile
+  if (terrainMap && gridWidth) {
+    const hasRadiationHabitat = (state.placedBuildings || []).some((pb) => {
+      if (pb.type !== 'HABITAT' || pb.isUnderConstruction) return false
+      const cells =
+        Array.isArray(pb.cells) && pb.cells.length > 0
+          ? pb.cells
+          : [{ x: pb.x, y: pb.y }]
+      return cells.some((c) => {
+        const tile = terrainMap[c.y * gridWidth + c.x]
+        return tile?.hazard?.id === 'RADIATION'
+      })
+    })
+    if (hasRadiationHabitat) return null
+  }
   if ((res.food || 0) <= 20) return null
   if ((res.water || 0) <= 20) return null
   if ((res.oxygen || 0) <= 10) return null

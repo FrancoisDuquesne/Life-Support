@@ -1,5 +1,5 @@
 // AI decision-making engine for competitive mode rival factions.
-// Rule-based priority: energy → water → food → O2 → minerals → habitats → research → expansion.
+// Rule-based priority with upgrade logic, research, defense, and multi-building per tick.
 
 import {
   BUILDING_TYPES,
@@ -8,94 +8,197 @@ import {
   getBaseAnchors,
   countBuildingsForBase,
   getNearestBase,
+  getUpgradeOptions,
   GRID_WIDTH,
   GRID_HEIGHT,
+  MAX_UPGRADE_LEVEL,
 } from '~/utils/gameEngine'
 import { getTerrainAt, getProductionMultiplier } from '~/utils/terrain'
 import { hexNeighbors, hexDistance } from '~/utils/hex'
 
 const BUILDING_MAP = Object.fromEntries(BUILDING_TYPES.map((b) => [b.id, b]))
 
+// How many buildings the AI can place per tick (scales with tick count)
+function getMaxBuildsPerTick(state) {
+  const tick = state.tickCount || 0
+  if (tick < 20) return 1
+  if (tick < 60) return 2
+  return 3
+}
+
 /**
- * Plan AI actions for one tick. Returns array of { action: 'build', type, x, y }.
- * Rate-limited to max 1 building per tick.
+ * Plan AI actions for one tick. Returns array of actions:
+ * - { action: 'build', type, x, y }
+ * - { action: 'upgrade', x, y, branch }
  */
 export function planAITurn(state, terrainMap, globalOccupied) {
   if (!state || !state.alive) return []
 
   const actions = []
+  const maxBuilds = getMaxBuildsPerTick(state)
 
-  // Determine what to build based on resource deficits
-  const buildType = pickBuildingType(state)
-  if (!buildType) return actions
+  // Try upgrading existing buildings first (cheap, high impact)
+  const upgradeAction = pickUpgrade(state)
+  if (upgradeAction) {
+    actions.push(upgradeAction)
+  }
 
-  // Find best cell for this building type
-  const cell = findBestCell(state, buildType, terrainMap, globalOccupied)
-  if (cell) {
-    actions.push({ action: 'build', type: buildType, x: cell.x, y: cell.y })
+  // Build up to maxBuilds buildings
+  const buildTypes = pickBuildingTypes(state, maxBuilds)
+  for (const buildType of buildTypes) {
+    const cell = findBestCell(state, buildType, terrainMap, globalOccupied)
+    if (cell) {
+      actions.push({ action: 'build', type: buildType, x: cell.x, y: cell.y })
+    }
   }
 
   return actions
 }
 
 /**
- * Decide which building type to build based on current needs.
+ * Pick the best building to upgrade. Returns action or null.
  */
-function pickBuildingType(state) {
+function pickUpgrade(state) {
   const res = state.resources || {}
-  const pop = (state.colonists || []).length
+  // Need enough minerals and energy for upgrade (12 * nextLevel minerals, 5 * nextLevel energy)
+  if ((res.minerals || 0) < 24 || (res.energy || 0) < 10) return null
 
-  // Compute approximate deltas from current buildings
-  const deltas = estimateDeltas(state, pop)
+  // Prioritize upgrading production buildings
+  const upgradeOrder = [
+    'RTG',
+    'SOLAR_PANEL',
+    'MINE',
+    'WATER_EXTRACTOR',
+    'HYDROPONIC_FARM',
+    'OXYGEN_GENERATOR',
+    'RESEARCH_LAB',
+    'DEFENSE_TURRET',
+  ]
 
-  // Critical: if energy delta is negative or energy is low, build power
-  if (deltas.energy < 0 || res.energy < 20) {
-    if (canBuildType(state, 'SOLAR_PANEL')) return 'SOLAR_PANEL'
-    if (canBuildType(state, 'RTG')) return 'RTG'
+  for (const typeId of upgradeOrder) {
+    for (const pb of state.placedBuildings || []) {
+      if (pb.type !== typeId || pb.isUnderConstruction) continue
+      const level = pb.level || 1
+      if (level >= MAX_UPGRADE_LEVEL) continue
+
+      const nextLevel = level + 1
+      const cost = { minerals: 12 * nextLevel, energy: 5 * nextLevel }
+      if (
+        (res.minerals || 0) < cost.minerals ||
+        (res.energy || 0) < cost.energy
+      )
+        continue
+
+      // Pick branch choice if needed
+      const options = getUpgradeOptions(state, pb.x, pb.y)
+      let branch = null
+      if (options?.branches) {
+        // Pick the first available branch (production-focused)
+        branch = options.branches[0]?.id || null
+      }
+
+      return { action: 'upgrade', x: pb.x, y: pb.y, branch }
+    }
   }
-
-  // Water needed
-  if (deltas.water < 0 || res.water < 15) {
-    if (canBuildType(state, 'WATER_EXTRACTOR')) return 'WATER_EXTRACTOR'
-  }
-
-  // Food needed
-  if (deltas.food < 0 || res.food < 15) {
-    if (canBuildType(state, 'HYDROPONIC_FARM')) return 'HYDROPONIC_FARM'
-  }
-
-  // Oxygen needed
-  if (deltas.oxygen < 0 || res.oxygen < 20) {
-    if (canBuildType(state, 'OXYGEN_GENERATOR')) return 'OXYGEN_GENERATOR'
-  }
-
-  // Minerals for economy
-  if (res.minerals < 30) {
-    if (canBuildType(state, 'MINE')) return 'MINE'
-  }
-
-  // Population capacity — build habitat if near cap
-  if (pop >= state.populationCapacity - 2) {
-    if (canBuildType(state, 'HABITAT')) return 'HABITAT'
-  }
-
-  // Expansion: always try to lay pipeline to grow territory
-  if (canBuildType(state, 'PIPELINE')) return 'PIPELINE'
 
   return null
 }
 
 /**
- * Estimate resource deltas from current buildings (simplified).
+ * Decide which building types to build (up to maxCount), in priority order.
+ */
+function pickBuildingTypes(state, maxCount) {
+  const res = state.resources || {}
+  const pop = (state.colonists || []).length
+  const deltas = estimateDeltas(state, pop)
+  const types = []
+
+  // Critical: if energy delta is negative or energy is low, build power
+  if (deltas.energy < 0 || res.energy < 20) {
+    if (canBuildType(state, 'SOLAR_PANEL')) types.push('SOLAR_PANEL')
+    else if (canBuildType(state, 'RTG')) types.push('RTG')
+  }
+
+  // Water needed
+  if (types.length < maxCount && (deltas.water < 0 || res.water < 15)) {
+    if (canBuildType(state, 'WATER_EXTRACTOR')) types.push('WATER_EXTRACTOR')
+  }
+
+  // Food needed
+  if (types.length < maxCount && (deltas.food < 0 || res.food < 15)) {
+    if (canBuildType(state, 'HYDROPONIC_FARM')) types.push('HYDROPONIC_FARM')
+  }
+
+  // Oxygen needed
+  if (types.length < maxCount && (deltas.oxygen < 0 || res.oxygen < 20)) {
+    if (canBuildType(state, 'OXYGEN_GENERATOR')) types.push('OXYGEN_GENERATOR')
+  }
+
+  // Minerals for economy
+  if (types.length < maxCount && res.minerals < 30) {
+    if (canBuildType(state, 'MINE')) types.push('MINE')
+  }
+
+  // Population capacity — build habitat if near cap
+  if (types.length < maxCount && pop >= state.populationCapacity - 2) {
+    if (canBuildType(state, 'HABITAT')) types.push('HABITAT')
+  }
+
+  // Research — build lab when economy is stable (tick > 30, positive deltas)
+  if (
+    types.length < maxCount &&
+    (state.tickCount || 0) > 30 &&
+    deltas.energy >= 5 &&
+    deltas.water >= 2
+  ) {
+    if (canBuildType(state, 'RESEARCH_LAB')) types.push('RESEARCH_LAB')
+  }
+
+  // Defense — build turret/radar when threat level rises (tick > 80)
+  if (types.length < maxCount && (state.tickCount || 0) > 80) {
+    if (canBuildType(state, 'RADAR_STATION')) types.push('RADAR_STATION')
+    else if (canBuildType(state, 'DEFENSE_TURRET')) types.push('DEFENSE_TURRET')
+  }
+
+  // Outpost Hub — expand when building caps are full (tick > 60)
+  if (types.length < maxCount && (state.tickCount || 0) > 60) {
+    const anchors = getBaseAnchors(state)
+    const allCapped = anchors.every((anchor) => {
+      const solarCount = countBuildingsForBase(state, anchor, 'SOLAR_PANEL')
+      const mineCount = countBuildingsForBase(state, anchor, 'MINE')
+      return solarCount >= 2 && mineCount >= 2
+    })
+    if (allCapped && canBuildType(state, 'OUTPOST_HUB')) {
+      types.push('OUTPOST_HUB')
+    }
+  }
+
+  // Expansion: fill remaining slots with pipeline
+  while (types.length < maxCount) {
+    if (canBuildType(state, 'PIPELINE')) {
+      types.push('PIPELINE')
+      break // Only one pipeline per tick to avoid clumping
+    }
+    break
+  }
+
+  return types
+}
+
+/**
+ * Estimate resource deltas from current buildings, including level multipliers.
  */
 function estimateDeltas(state, pop) {
   const deltas = { energy: 0, food: 0, water: 0, minerals: 0, oxygen: 0 }
   for (const pb of state.placedBuildings || []) {
     if (pb.isUnderConstruction) continue
+    if (pb.disabledUntilTick && pb.disabledUntilTick > (state.tickCount || 0))
+      continue
     const bType = BUILDING_MAP[pb.type]
     if (!bType) continue
+    const levelMult = 1 + ((pb.level || 1) - 1) * 0.3
     for (const [res, amt] of Object.entries(bType.produces || {})) {
-      deltas[res] = (deltas[res] || 0) + amt
+      deltas[res] = (deltas[res] || 0) + amt * levelMult
     }
     for (const [res, amt] of Object.entries(bType.consumes || {})) {
       deltas[res] = (deltas[res] || 0) - amt

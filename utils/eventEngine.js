@@ -1,5 +1,7 @@
 // Random event system — generation, effects, and modifiers
 import { mulberry32 } from '~/utils/hex'
+import { GRID_WIDTH, GRID_HEIGHT } from '~/utils/gameEngine'
+import { getTechEffects } from '~/utils/techTree'
 
 // --- Event Type Definitions ---
 
@@ -146,10 +148,14 @@ function applyMeteorStrike(state, event, revealedTiles) {
   event.data.x = tx
   event.data.y = ty
 
-  // Check if a building is at this tile
-  const buildingIdx = state.placedBuildings.findIndex(
-    (b) => b.x === tx && b.y === ty,
-  )
+  // Check if a building is at this tile (check all footprint cells, not just anchor)
+  const buildingIdx = state.placedBuildings.findIndex((b) => {
+    const cells =
+      Array.isArray(b.cells) && b.cells.length > 0
+        ? b.cells
+        : [{ x: b.x, y: b.y }]
+    return cells.some((c) => c.x === tx && c.y === ty)
+  })
   if (buildingIdx >= 0) {
     const building = state.placedBuildings[buildingIdx]
     const buildingKey = building.type.toLowerCase()
@@ -168,9 +174,14 @@ function applyMeteorStrike(state, event, revealedTiles) {
       (state.buildings[buildingKey] || 0) - 1,
     )
 
-    // Habitat capacity
+    // Habitat capacity — subtract full capacity including tech bonus
     if (building.type === 'HABITAT') {
-      state.populationCapacity = Math.max(10, state.populationCapacity - 5)
+      const techEffects = getTechEffects(state.unlockedTechs)
+      const capacityLoss = 10 + techEffects.habitatCapacityBonus
+      state.populationCapacity = Math.max(
+        10,
+        state.populationCapacity - capacityLoss,
+      )
     }
 
     event.data.buildingDestroyed = true
@@ -182,11 +193,15 @@ function applyMeteorStrike(state, event, revealedTiles) {
 }
 
 function applyEquipmentFailure(state, event) {
-  if (state.placedBuildings.length === 0) return null
+  // Filter out MDV and under-construction buildings
+  const eligible = state.placedBuildings.filter(
+    (b) => b.type !== 'MDV_LANDING_SITE' && !b.isUnderConstruction,
+  )
+  if (eligible.length === 0) return null
 
   const rng = mulberry32(state.terrainSeed * 13 + state.tickCount * 7)
-  const idx = Math.floor(rng() * state.placedBuildings.length)
-  const building = state.placedBuildings[idx]
+  const idx = Math.floor(rng() * eligible.length)
+  const building = eligible[idx]
 
   building.disabledUntilTick = state.tickCount + 3
   event.data.buildingId = building.id
@@ -234,7 +249,7 @@ function applyResourceDiscovery(state, event, revealedTiles) {
           ]
 
     for (const [nx, ny] of offsets) {
-      if (nx < 0 || nx >= 64 || ny < 0 || ny >= 64) continue
+      if (nx < 0 || nx >= GRID_WIDTH || ny < 0 || ny >= GRID_HEIGHT) continue
       const nk = nx + ',' + ny
       if (revealedTiles.has(nk) || checked.has(nk)) continue
       checked.add(nk)
@@ -266,7 +281,7 @@ export function getActiveModifiers(state) {
   }
 
   for (const event of state.activeEvents) {
-    if (event.endTick < state.tickCount) continue
+    if (event.endTick <= state.tickCount) continue
 
     switch (event.type) {
       case 'DUST_STORM':

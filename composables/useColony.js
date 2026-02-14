@@ -80,6 +80,17 @@ export function useColony() {
   const isGameOver = ref(false)
   const winner = ref(null)
 
+  // Cached full-map revealed set for AI factions (created once, reused)
+  let _aiRevealedCache = null
+  function getAIRevealedCache() {
+    if (_aiRevealedCache) return _aiRevealedCache
+    const s = new Set()
+    for (let r = 0; r < GRID_HEIGHT; r++)
+      for (let c = 0; c < GRID_WIDTH; c++) s.add(c + ',' + r)
+    _aiRevealedCache = s
+    return s
+  }
+
   // Revealed tiles state
   const revealedTiles = ref(new Set())
 
@@ -414,7 +425,7 @@ export function useColony() {
         continue
       }
 
-      // AI builds
+      // AI builds and upgrades
       const actions = planAITurn(ai, terrainMap.value, globalOccupied)
       for (const action of actions) {
         if (action.action === 'build') {
@@ -423,14 +434,13 @@ export function useColony() {
           })
           // Update globalOccupied with new cells
           for (const key of ai.occupiedCells) globalOccupied.add(key)
+        } else if (action.action === 'upgrade') {
+          engineUpgradeBuilding(ai, action.x, action.y, action.branch)
         }
       }
 
-      // AI tick
-      const allRevealed = new Set()
-      for (let r = 0; r < GRID_HEIGHT; r++)
-        for (let c = 0; c < GRID_WIDTH; c++) allRevealed.add(c + ',' + r)
-      engineTick(ai, terrainMap.value, allRevealed)
+      // AI tick (uses cached full-map revealed set)
+      engineTick(ai, terrainMap.value, getAIRevealedCache())
       snapshots.push(toSnapshot(ai))
     }
     aiFactionSnapshots.value = snapshots
@@ -525,7 +535,10 @@ export function useColony() {
         const count = countTerritory(def.id)
         if (count / totalTerritory >= DOMINATION_THRESHOLD) {
           isGameOver.value = true
-          winner.value = def
+          // Include score in winner object so UI can display it
+          const scores = factionScores.value
+          const factionScore = scores.find((s) => s.id === def.id)
+          winner.value = factionScore || { ...def, score: 0 }
           addLog(tick, `VICTORY: ${def.name} achieved domination!`)
           return
         }
@@ -655,6 +668,7 @@ export function useColony() {
 
     // Reset competitive state
     gameMode.value = mode
+    _aiRevealedCache = null
     aiFactions = []
     aiFactionSnapshots.value = []
     territoryMap.value = new Map()
@@ -820,13 +834,13 @@ export function useColony() {
   })
 
   const baseAnchors = computed(() => {
-    if (!colony) return []
-    return engineGetBaseAnchors(colony)
+    if (!state.value) return []
+    return engineGetBaseAnchors(state.value)
   })
 
   function getBuildingCountForBase(base, type) {
-    if (!colony) return 0
-    return engineCountBuildingsForBase(colony, base, type)
+    if (!state.value) return 0
+    return engineCountBuildingsForBase(state.value, base, type)
   }
 
   const adjustedBuildingsInfo = computed(() => {
