@@ -147,19 +147,19 @@ function formatSignedDelta(value) {
           r.delta < 0 ? 'ring-error/70 bg-error/10 animate-pulse ring-1' : '',
         ]"
       >
-        <span class="text-muted text-[9px] font-medium leading-none">{{
+        <span class="text-muted text-[9px] leading-none font-medium">{{
           abbrev[r.key]
         }}</span>
         <span
           :class="[
-            'text-highlighted text-xs font-bold tabular-nums leading-tight',
+            'text-highlighted text-xs leading-tight font-bold tabular-nums',
             { 'animate-pulse': isFlashing(r.key) },
           ]"
           >{{ formatCompact(r.val) }}</span
         >
         <span
           :class="[
-            'text-[9px] font-bold tabular-nums leading-tight',
+            'text-[9px] leading-tight font-bold tabular-nums',
             r.delta > 0
               ? 'text-success'
               : r.delta < 0
@@ -171,7 +171,7 @@ function formatSignedDelta(value) {
         </span>
         <span
           v-if="r.ticksLeft !== null && r.ticksLeft <= DEPLETION_WARN_TICKS"
-          class="text-error text-[9px] font-bold tabular-nums leading-none"
+          class="text-error text-[9px] leading-none font-bold tabular-nums"
         >
           {{ r.ticksLeft <= 0 ? '!' : `${r.ticksLeft}t` }}
         </span>
@@ -224,7 +224,9 @@ function formatSignedDelta(value) {
                 {{ formatSignedDelta(r.delta) }}/t
               </span>
               <span
-                v-if="r.ticksLeft !== null && r.ticksLeft <= DEPLETION_WARN_TICKS"
+                v-if="
+                  r.ticksLeft !== null && r.ticksLeft <= DEPLETION_WARN_TICKS
+                "
                 class="text-error bg-error/15 rounded px-1 text-[10px] font-bold tabular-nums"
               >
                 {{ r.ticksLeft <= 0 ? 'EMPTY' : `${r.ticksLeft}t left` }}

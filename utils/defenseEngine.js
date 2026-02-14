@@ -77,8 +77,11 @@ export function rollAlienEvent(state) {
   if (activeCount >= 2) return null
 
   // Threat escalation: probability multiplier increases with tick count and colony size
-  const tickScale = Math.min(3.0, 1.0 + (state.tickCount / 300))
-  const colonyScale = Math.min(2.0, 1.0 + (state.placedBuildings || []).length / 30)
+  const tickScale = Math.min(3.0, 1.0 + state.tickCount / 300)
+  const colonyScale = Math.min(
+    2.0,
+    1.0 + (state.placedBuildings || []).length / 30,
+  )
   const threatMult = Math.min(3.0, tickScale * colonyScale * 0.5)
 
   for (const evtType of Object.values(ALIEN_EVENT_TYPES)) {
@@ -99,7 +102,7 @@ export function rollAlienEvent(state) {
       )
 
       return {
-        id: (state.nextEventId || 1),
+        id: state.nextEventId || 1,
         type: evtType.id,
         startTick: state.tickCount,
         endTick: state.tickCount + evtType.duration,
@@ -123,12 +126,17 @@ export function resolveAlienEvent(state, event) {
 
   state.nextEventId = (state.nextEventId || 1) + 1
 
-  const defenseRatio = Math.min(1.0, (state.defenseRating || 0) / evtType.threat)
+  const defenseRatio = Math.min(
+    1.0,
+    (state.defenseRating || 0) / evtType.threat,
+  )
 
   if (defenseRatio >= 1.0) {
     // Fully repelled
     event.mitigated = true
-    messages.push(`[DEFENSE] ${evtType.name} was fully repelled by colony defenses!`)
+    messages.push(
+      `[DEFENSE] ${evtType.name} was fully repelled by colony defenses!`,
+    )
     return { messages }
   }
 
@@ -141,7 +149,9 @@ export function resolveAlienEvent(state, event) {
       c.morale = Math.max(0, c.morale - moraleDmg)
     }
     if (moraleDmg > 0) {
-      messages.push(`[ALIEN] ${evtType.name} detected! Colonist morale -${moraleDmg}`)
+      messages.push(
+        `[ALIEN] ${evtType.name} detected! Colonist morale -${moraleDmg}`,
+      )
     }
   }
 

@@ -47,14 +47,6 @@ export const START_RESOURCES = {
   research: 0,
 }
 
-// Waste generated per active building per tick
-const WASTE_PER_BUILDING = 0.3
-// Waste generated per colonist per tick
-const WASTE_PER_COLONIST = 0.2
-// Waste reduced per active recycling center per tick
-const WASTE_REDUCTION_PER_RECYCLER = 3
-// Production penalty when waste overflows
-export const WASTE_OVERFLOW_PENALTY = 0.75
 const MDV_FOOTPRINT_SIZE = 7
 const MAX_BUILD_RADIUS_FROM_COLONY = 5
 export const MAX_UPGRADE_LEVEL = 5
@@ -147,17 +139,6 @@ export const BUILDING_TYPES = [
     produces: { energy: 5 },
     consumes: {},
     buildTime: 2,
-  },
-  {
-    id: 'RECYCLING_CENTER',
-    name: 'Recycling Center',
-    description: 'Processes colony waste, reducing buildup by 3/tick',
-    cost: { minerals: 20, energy: 10 },
-    produces: {},
-    consumes: { energy: 2 },
-    special: 'Reduces waste by 3/tick',
-    footprintSize: 3,
-    buildTime: 3,
   },
   {
     id: 'RESEARCH_LAB',
@@ -296,10 +277,9 @@ export const UPGRADE_TREES = {
       {
         id: 'nutrient_recycler',
         name: 'Nutrient Recycler',
-        desc: '+60% food, -1 waste/tick',
+        desc: '+60% food, -30% water use',
         prodMult: 1.6,
-        consMult: 1.0,
-        wasteReduction: 1,
+        consMult: 0.7,
       },
     ],
   },
@@ -951,8 +931,6 @@ export function createColonyState(options = {}) {
     terrainSeed,
     activeEvents: [],
     nextEventId: 1,
-    waste: 0,
-    wasteCapacity: 50,
     missions: [],
     nextMissionId: 1,
     completedMissions: [],
@@ -994,7 +972,7 @@ export function createColonyState(options = {}) {
 }
 
 /**
- * Compute resource deltas per tick, accounting for terrain, events, HP, waste, and colonist roles.
+ * Compute resource deltas per tick, accounting for terrain, events, and colonist roles.
  * Shared by processTick (for actual mutation) and useColony (for UI preview).
  */
 export function computeResourceDeltas(state, terrainMap) {
@@ -1007,15 +985,12 @@ export function computeResourceDeltas(state, terrainMap) {
     research: 0,
   }
   const modifiers = getActiveModifiers(state)
-  const wasteOverflow = state.waste > state.wasteCapacity
-  const wastePenalty = wasteOverflow ? WASTE_OVERFLOW_PENALTY : 1.0
 
   // Colonist role bonuses and colony efficiency
   const roleBonuses = computeRoleBonuses(state)
   const colonyEff = computeColonyEfficiency(state.colonists)
 
   let activeBuildingCount = 0
-  let activeRecyclerCount = 0
   const pipelineNetworks = computePipelineNetworks(state)
 
   for (const pb of state.placedBuildings) {
@@ -1039,8 +1014,7 @@ export function computeResourceDeltas(state, terrainMap) {
     const dustImmune = hasUpgradeEffect(pb, 'dustImmune')
 
     for (const [res, amt] of Object.entries(bType.produces)) {
-      let effectiveMult =
-        terrainMult * wastePenalty * colonyEff * distEff
+      let effectiveMult = terrainMult * colonyEff * distEff
       // Role bonus for this building type
       if (roleBonuses.buildingMultipliers[pb.type]) {
         effectiveMult *= roleBonuses.buildingMultipliers[pb.type]
@@ -1065,8 +1039,6 @@ export function computeResourceDeltas(state, terrainMap) {
     for (const [res, amt] of Object.entries(bType.consumes)) {
       deltas[res] = (deltas[res] || 0) - amt * levelConsMult
     }
-
-    if (bType.id === 'RECYCLING_CENTER') activeRecyclerCount++
   }
 
   // Population drain
@@ -1074,12 +1046,6 @@ export function computeResourceDeltas(state, terrainMap) {
   deltas.food -= pop > 0 ? Math.max(1, Math.floor(pop / 2)) : 0
   deltas.water -= pop > 0 ? Math.max(1, Math.floor(pop / 3)) : 0
   deltas.oxygen -= pop
-
-  // Waste delta
-  deltas.waste =
-    activeBuildingCount * WASTE_PER_BUILDING +
-    pop * WASTE_PER_COLONIST -
-    activeRecyclerCount * WASTE_REDUCTION_PER_RECYCLER
 
   return deltas
 }
@@ -1213,7 +1179,6 @@ export function processTick(state, terrainMap, revealedTiles) {
   for (const key of RESOURCE_KEYS) {
     state.resources[key] = (state.resources[key] || 0) + (deltas[key] || 0)
   }
-  state.waste = Math.max(0, state.waste + (deltas.waste || 0))
 
   // 11. Death checks
   events += `Tick ${state.tickCount} processed. `
@@ -1257,13 +1222,6 @@ export function processTick(state, terrainMap, revealedTiles) {
       )
     }
     events += `COLONY COLLAPSED: ${state.collapseReason.cause} `
-  }
-
-  // 12. Waste overflow warning
-  if (state.waste > state.wasteCapacity) {
-    events += 'WARNING: Waste overflow — production reduced! '
-  } else if (state.waste > state.wasteCapacity * 0.8) {
-    events += 'WARNING: Waste nearing capacity! '
   }
 
   // 12b. Process missions
@@ -1346,8 +1304,7 @@ export function processTick(state, terrainMap, revealedTiles) {
     } else {
       // Random walk (existing behavior)
       const neighbors = hexNeighbors(unit.x, unit.y).filter(
-        ([nx, ny]) =>
-          nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT,
+        ([nx, ny]) => nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT,
       )
       const walkable = neighbors.filter(([nx, ny]) =>
         revealedSet.has(`${nx},${ny}`),
@@ -1400,6 +1357,7 @@ export function buildAt(state, type, x, y, terrainMap) {
     state.resources[res] -= adjustedCost
   }
 
+  const buildTime = bType.buildTime || 2
   const placed = {
     id: state.nextBuildingId++,
     type: bType.id,
@@ -1409,7 +1367,8 @@ export function buildAt(state, type, x, y, terrainMap) {
     disabledUntilTick: 0,
     level: 1,
     isUnderConstruction: true,
-    constructionDoneTick: state.tickCount + (bType.buildTime || 2),
+    constructionDoneTick: state.tickCount + buildTime,
+    buildTime,
   }
   state.placedBuildings.push(placed)
   for (const cell of footprint) {
@@ -1702,8 +1661,6 @@ export function toSnapshot(state) {
     tickCount: state.tickCount,
     alive: state.alive,
     terrainSeed: state.terrainSeed,
-    waste: state.waste || 0,
-    wasteCapacity: state.wasteCapacity || 50,
     collapseReason: state.collapseReason ? { ...state.collapseReason } : null,
     activeEvents: (state.activeEvents || []).map((e) => ({
       ...e,
@@ -1718,6 +1675,7 @@ export function toSnapshot(state) {
       level: pb.level || 1,
       isUnderConstruction: !!pb.isUnderConstruction,
       constructionDoneTick: pb.constructionDoneTick || 0,
+      buildTime: pb.buildTime || 2,
       cells: getBuildingCells(pb).map((c) => ({ x: c.x, y: c.y })),
       upgradeChoices: pb.upgradeChoices ? { ...pb.upgradeChoices } : {},
     })),

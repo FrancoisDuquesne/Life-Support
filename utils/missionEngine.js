@@ -8,7 +8,7 @@ export const MISSION_TYPES = {
     description: 'Send a scout to map nearby terrain',
     duration: 8,
     requiredColonists: 1,
-    risk: 0.10,
+    risk: 0.1,
     preferredRole: 'GEOLOGIST',
     rewards: { revealRadius: 6, depositChance: 0.3 },
   },
@@ -28,7 +28,7 @@ export const MISSION_TYPES = {
     description: 'Study an anomalous signal or site',
     duration: 15,
     requiredColonists: 2,
-    risk: 0.20,
+    risk: 0.2,
     preferredRole: 'ENGINEER',
     rewards: { research: [10, 25], techUnlockChance: 0.4 },
   },
@@ -62,14 +62,18 @@ export function createMission(state, typeId, colonistIds, targetX, targetY) {
   if (!mType) return { success: false, message: 'Unknown mission type' }
 
   if (colonistIds.length < mType.requiredColonists) {
-    return { success: false, message: `Need ${mType.requiredColonists} colonists` }
+    return {
+      success: false,
+      message: `Need ${mType.requiredColonists} colonists`,
+    }
   }
 
   // Check colonists are available
   for (const cid of colonistIds) {
     const c = state.colonists.find((col) => col.id === cid)
     if (!c) return { success: false, message: `Colonist ${cid} not found` }
-    if (c.onMission) return { success: false, message: `${c.name} is already on a mission` }
+    if (c.onMission)
+      return { success: false, message: `${c.name} is already on a mission` }
   }
 
   const mission = {
@@ -92,7 +96,11 @@ export function createMission(state, typeId, colonistIds, targetX, targetY) {
     if (c) c.onMission = mission.id
   }
 
-  return { success: true, message: `Mission "${mType.name}" dispatched`, mission }
+  return {
+    success: true,
+    message: `Mission "${mType.name}" dispatched`,
+    mission,
+  }
 }
 
 /**
@@ -191,7 +199,9 @@ export function processMissionTick(state, terrainMap, revealedTiles) {
  */
 export function getAvailableMissions(state) {
   const available = []
-  const freeColonists = (state.colonists || []).filter((c) => !c.onMission && c.health > 20)
+  const freeColonists = (state.colonists || []).filter(
+    (c) => !c.onMission && c.health > 20,
+  )
 
   for (const mType of Object.values(MISSION_TYPES)) {
     if (freeColonists.length < mType.requiredColonists) continue

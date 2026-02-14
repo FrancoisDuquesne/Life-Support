@@ -9,7 +9,6 @@ export const BUILDING_COLORS = {
   HABITAT: { fill: '#94a3b8', accent: '#cbd5e1' },
   OXYGEN_GENERATOR: { fill: '#06b6d4', accent: '#22d3ee' },
   RTG: { fill: '#a855f7', accent: '#c084fc' },
-  RECYCLING_CENTER: { fill: '#84cc16', accent: '#a3e635' },
   PIPELINE: { fill: '#94a3b8', accent: '#e2e8f0' },
   MDV_LANDING_SITE: { fill: '#64748b', accent: '#e2e8f0' },
   RESEARCH_LAB: { fill: '#ec4899', accent: '#f472b6' },
@@ -611,7 +610,16 @@ function drawLevelDecorations(ctx, cx, cy, r, level, colors) {
 }
 
 // Distinct building shapes — center-relative drawing
-export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0, level = 1) {
+export function drawBuilding(
+  ctx,
+  type,
+  x,
+  y,
+  size,
+  alpha,
+  rotation = 0,
+  level = 1,
+) {
   const colors = BUILDING_COLORS[type] || { fill: '#888', accent: '#aaa' }
   const cx = x + size / 2
   const cy = y + size / 2
@@ -835,7 +843,13 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0, level =
       ctx.lineTo(tankX + tankW - tankR, tankY)
       ctx.arc(tankX + tankW - tankR, tankY + tankR, tankR, -Math.PI / 2, 0)
       ctx.lineTo(tankX + tankW, tankY + tankH - tankR)
-      ctx.arc(tankX + tankW - tankR, tankY + tankH - tankR, tankR, 0, Math.PI / 2)
+      ctx.arc(
+        tankX + tankW - tankR,
+        tankY + tankH - tankR,
+        tankR,
+        0,
+        Math.PI / 2,
+      )
       ctx.lineTo(tankX + tankR, tankY + tankH)
       ctx.arc(tankX + tankR, tankY + tankH - tankR, tankR, Math.PI / 2, Math.PI)
       ctx.lineTo(tankX, tankY + tankR)
@@ -898,72 +912,6 @@ export function drawBuilding(ctx, type, x, y, size, alpha, rotation = 0, level =
         ctx.closePath()
         ctx.fill()
       }
-      break
-    }
-
-    case 'RECYCLING_CENTER': {
-      const podR = r * 0.46
-      const orbit = r * 0.56
-      const points = [
-        [cx, cy - orbit],
-        [cx + orbit * 0.86, cy + orbit * 0.5],
-        [cx - orbit * 0.86, cy + orbit * 0.5],
-      ]
-      // Curved arrow arcs between pods (recycling symbol)
-      ctx.strokeStyle = colors.accent
-      ctx.lineWidth = Math.max(2, r * 0.1)
-      ctx.lineCap = 'round'
-      for (let i = 0; i < 3; i++) {
-        const from = points[i]
-        const to = points[(i + 1) % 3]
-        const mx = (from[0] + to[0]) / 2
-        const my = (from[1] + to[1]) / 2
-        // Curve control point pulls toward center
-        const cpx = mx + (cx - mx) * 0.6
-        const cpy = my + (cy - my) * 0.6
-        ctx.beginPath()
-        ctx.moveTo(from[0], from[1])
-        ctx.quadraticCurveTo(cpx, cpy, to[0], to[1])
-        ctx.stroke()
-        // Arrowhead at destination
-        const dx = to[0] - cpx
-        const dy = to[1] - cpy
-        const angle = Math.atan2(dy, dx)
-        const headLen = r * 0.18
-        ctx.beginPath()
-        ctx.moveTo(to[0], to[1])
-        ctx.lineTo(
-          to[0] - headLen * Math.cos(angle - 0.4),
-          to[1] - headLen * Math.sin(angle - 0.4),
-        )
-        ctx.moveTo(to[0], to[1])
-        ctx.lineTo(
-          to[0] - headLen * Math.cos(angle + 0.4),
-          to[1] - headLen * Math.sin(angle + 0.4),
-        )
-        ctx.stroke()
-      }
-      for (const [px, py] of points) {
-        ctx.fillStyle = hull
-        ctx.beginPath()
-        ctx.arc(px, py, podR, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = hullLine
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.fillStyle = colors.accent
-        ctx.beginPath()
-        ctx.arc(px, py, podR * 0.28, 0, Math.PI * 2)
-        ctx.fill()
-      }
-      // Central hub dot
-      ctx.fillStyle = '#e2e8f0'
-      ctx.beginPath()
-      ctx.arc(cx, cy, podR * 0.32, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = hullLine
-      ctx.lineWidth = 1
-      ctx.stroke()
       break
     }
 
@@ -1338,45 +1286,6 @@ export function drawFootprintBuilding(
         podR * 0.24,
       )
     }
-    drawLevelDecorations(ctx, cx, cy, hexS * 0.4, level, colors)
-    ctx.restore()
-    return true
-  }
-
-  if (type === 'RECYCLING_CENTER') {
-    const recPodR = hexS * 0.58
-    ctx.strokeStyle = '#ecf2f9'
-    ctx.lineWidth = Math.max(3, hexS * 0.2)
-    ctx.beginPath()
-    for (let i = 0; i < centers.length; i++) {
-      const a = centers[i]
-      const b = centers[(i + 1) % centers.length]
-      if (i === 0) ctx.moveTo(a.x, a.y)
-      ctx.lineTo(b.x, b.y)
-    }
-    ctx.closePath()
-    ctx.stroke()
-
-    for (const c of centers) {
-      ctx.fillStyle = '#ecf2f9'
-      ctx.beginPath()
-      ctx.arc(c.x, c.y, recPodR, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = '#8fa2b6'
-      ctx.lineWidth = Math.max(1, hexS * 0.035)
-      ctx.stroke()
-      ctx.fillStyle = colors.accent
-      ctx.beginPath()
-      ctx.arc(c.x, c.y, recPodR * 0.28, 0, Math.PI * 2)
-      ctx.fill()
-    }
-
-    ctx.fillStyle = '#e2e8f0'
-    ctx.beginPath()
-    ctx.arc(cx, cy, podR * 0.38, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = '#8fa2b6'
-    ctx.stroke()
     drawLevelDecorations(ctx, cx, cy, hexS * 0.4, level, colors)
     ctx.restore()
     return true

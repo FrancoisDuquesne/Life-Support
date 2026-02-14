@@ -153,7 +153,9 @@ function hasEntries(map) {
 // Info panel position: push outward from menu center
 const infoPanelStyle = computed(() => {
   if (!hoveredId.value) return { display: 'none' }
-  const idx = availableBuildings.value.findIndex((b) => b.id === hoveredId.value)
+  const idx = availableBuildings.value.findIndex(
+    (b) => b.id === hoveredId.value,
+  )
   if (idx === -1) return { display: 'none' }
   const pos = itemPosition(idx)
   const N = availableBuildings.value.length
@@ -163,8 +165,10 @@ const infoPanelStyle = computed(() => {
   const ix = Math.cos(angle) * infoDistance
   const iy = Math.sin(angle) * infoDistance
   // Anchor the card relative to the direction
-  const translateX = Math.cos(angle) > 0.3 ? '0%' : Math.cos(angle) < -0.3 ? '-100%' : '-50%'
-  const translateY = Math.sin(angle) > 0.3 ? '0%' : Math.sin(angle) < -0.3 ? '-100%' : '-50%'
+  const translateX =
+    Math.cos(angle) > 0.3 ? '0%' : Math.cos(angle) < -0.3 ? '-100%' : '-50%'
+  const translateY =
+    Math.sin(angle) > 0.3 ? '0%' : Math.sin(angle) < -0.3 ? '-100%' : '-50%'
   return {
     position: 'absolute',
     left: `${ix}px`,
@@ -183,7 +187,12 @@ const hoveredBuilding = computed(() => {
 <template>
   <Teleport to="body">
     <Transition name="radial">
-      <div v-if="open" class="radial-backdrop" @click="close" @contextmenu.prevent="close">
+      <div
+        v-if="open"
+        class="radial-backdrop"
+        @click="close"
+        @contextmenu.prevent="close"
+      >
         <div
           ref="menuRef"
           class="radial-container"
@@ -232,10 +241,17 @@ const hoveredBuilding = computed(() => {
             :style="infoPanelStyle"
             class="pointer-events-none"
           >
-            <UCard :ui="{ body: 'p-2 sm:p-2' }" class="radial-info w-52 shadow-lg">
+            <UCard
+              :ui="{ body: 'p-2 sm:p-2' }"
+              class="radial-info w-52 shadow-lg"
+            >
               <div class="flex flex-col gap-1.5">
-                <div class="text-highlighted text-sm font-bold">{{ hoveredBuilding.name }}</div>
-                <div class="text-muted text-xs leading-tight">{{ hoveredBuilding.description }}</div>
+                <div class="text-highlighted text-sm font-bold">
+                  {{ hoveredBuilding.name }}
+                </div>
+                <div class="text-muted text-xs leading-tight">
+                  {{ hoveredBuilding.description }}
+                </div>
 
                 <!-- Cost bars -->
                 <div class="flex flex-col gap-1">
@@ -254,17 +270,24 @@ const hoveredBuilding = computed(() => {
                     <span
                       :class="[
                         'min-w-10 text-right text-xs font-bold tabular-nums',
-                        getResourceVal(res) >= amount ? 'text-success' : 'text-error',
+                        getResourceVal(res) >= amount
+                          ? 'text-success'
+                          : 'text-error',
                       ]"
                     >
-                      {{ formatCompact(getResourceVal(res)) }}/{{ formatCompact(amount) }}
+                      {{ formatCompact(getResourceVal(res)) }}/{{
+                        formatCompact(amount)
+                      }}
                     </span>
                   </div>
                 </div>
 
                 <!-- Produces / Consumes -->
                 <div
-                  v-if="hasEntries(hoveredBuilding.produces) || hasEntries(hoveredBuilding.consumes)"
+                  v-if="
+                    hasEntries(hoveredBuilding.produces) ||
+                    hasEntries(hoveredBuilding.consumes)
+                  "
                   class="flex flex-wrap gap-1"
                 >
                   <span
@@ -333,7 +356,9 @@ const hoveredBuilding = computed(() => {
   gap: 2px;
   pointer-events: auto;
   cursor: pointer;
-  transition: transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .radial-item--dimmed {
@@ -354,7 +379,9 @@ const hoveredBuilding = computed(() => {
   height: 48px;
   border-radius: 50%;
   border: 2px solid rgba(148, 163, 184, 0.5);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
   background: #1e293b;
 }
 
@@ -385,7 +412,9 @@ const hoveredBuilding = computed(() => {
   transition: opacity 0.15s ease-out;
 }
 .radial-enter-active .radial-item {
-  transition: transform 0.15s ease-out, opacity 0.15s ease-out;
+  transition:
+    transform 0.15s ease-out,
+    opacity 0.15s ease-out;
 }
 .radial-leave-active {
   transition: opacity 0.1s ease-in;

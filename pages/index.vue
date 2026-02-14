@@ -1,11 +1,6 @@
 <script setup>
 import { getTerrainAt, getTerrainBonusText } from '~/utils/terrain'
-import {
-  GRID_WIDTH,
-  WASTE_OVERFLOW_PENALTY,
-  MAX_UPGRADE_LEVEL,
-} from '~/utils/gameEngine'
-import { formatSignedFixed, roundTo } from '~/utils/formatting'
+import { GRID_WIDTH, MAX_UPGRADE_LEVEL } from '~/utils/gameEngine'
 import { ROLES } from '~/utils/colonistEngine'
 import {
   MILESTONES,
@@ -21,29 +16,6 @@ const interaction = useGridInteraction(
   colony.gridWidth,
   colony.gridHeight,
 )
-
-const wasteInfo = computed(() => {
-  const s = colony.state.value
-  if (!s) return { waste: 0, capacity: 50, pct: 0 }
-  const waste = Math.round(s.waste || 0)
-  const capacity = s.wasteCapacity || 50
-  return { waste, capacity, pct: Math.min(100, (waste / capacity) * 100) }
-})
-
-const wasteDelta = computed(() => {
-  const d = colony.resourceDeltas.value
-  if (!d || d.waste === undefined) return 0
-  return roundTo(d.waste, 1)
-})
-
-const wasteOverflowActive = computed(
-  () => wasteInfo.value.waste > wasteInfo.value.capacity,
-)
-const wasteOverflowPenaltyPct = Math.round((1 - WASTE_OVERFLOW_PENALTY) * 100)
-
-function formatSignedOneDecimal(value) {
-  return formatSignedFixed(value, 1)
-}
 
 const showBuildSheet = ref(false)
 const showResourceGraph = ref(false)
@@ -269,7 +241,6 @@ const hoverBuildingInfo = computed(() => {
     OXYGEN_GENERATOR: 'text-resource-oxygen',
     RTG: 'text-primary',
     HABITAT: 'text-muted',
-    RECYCLING_CENTER: 'text-success',
   }
 
   const level = building.level || 1
@@ -439,7 +410,6 @@ async function onTileClick(gx, gy, canvasX, canvasY) {
     const result = await colony.buildAt(sel, gx, gy)
     if (result && result.success !== false) {
       colony.revealAround(gx, gy, 3)
-      interaction.clearSelection()
     }
     return
   }
@@ -514,6 +484,12 @@ async function onTileDelete(gx, gy) {
 
 function onContextMenu(gx, gy, screenX, screenY) {
   if (!colony.state.value || !colony.state.value.alive) return
+
+  // If in build mode, right-click exits build mode
+  if (interaction.selectedBuilding.value) {
+    interaction.clearSelection()
+    return
+  }
 
   // If a colonist is selected, right-click issues a move command (even into fog)
   const selectedColId = interaction.selectedColonist.value
@@ -743,49 +719,6 @@ onUnmounted(() => {
             embedded
           />
         </div>
-        <div
-          class="bg-default border-default rounded-md border p-1.5 shadow-xs"
-        >
-          <div class="mb-1 flex items-center justify-between gap-2">
-            <h4 class="uppercase">Waste</h4>
-            <div class="flex items-center gap-2 whitespace-nowrap tabular-nums">
-              <span class="text-highlighted text-sm font-bold">
-                {{ wasteInfo.waste }}/{{ wasteInfo.capacity }}
-              </span>
-              <span
-                :class="[
-                  'text-xs font-bold',
-                  wasteDelta > 0
-                    ? 'text-error'
-                    : wasteDelta < 0
-                      ? 'text-success'
-                      : 'text-muted',
-                ]"
-              >
-                {{ formatSignedOneDecimal(wasteDelta) }}/t
-              </span>
-            </div>
-          </div>
-          <div class="px-0.5">
-            <UProgress
-              :model-value="wasteInfo.pct"
-              :color="
-                wasteInfo.pct > 80
-                  ? 'error'
-                  : wasteInfo.pct > 50
-                    ? 'warning'
-                    : 'success'
-              "
-              size="sm"
-            />
-            <p
-              v-if="wasteOverflowActive"
-              class="text-error mt-1 text-xs leading-tight font-medium"
-            >
-              Overflow active: -{{ wasteOverflowPenaltyPct }}% production
-            </p>
-          </div>
-        </div>
         <!-- Defense Rating -->
         <div
           v-if="
@@ -852,15 +785,6 @@ onUnmounted(() => {
         />
         <div class="mt-0.5 flex items-center justify-between gap-1 px-0.5">
           <PopulationBar :state="colony.state.value" compact />
-          <div class="flex items-center gap-1 whitespace-nowrap">
-            <span class="text-muted text-[9px]">WST</span>
-            <span class="text-highlighted text-xs tabular-nums">{{
-              wasteInfo.waste
-            }}</span>
-            <span v-if="wasteOverflowActive" class="text-error text-[9px]"
-              >-{{ wasteOverflowPenaltyPct }}%</span
-            >
-          </div>
         </div>
       </div>
       <div
@@ -895,8 +819,9 @@ onUnmounted(() => {
           "
         >
           <template #title>
-            Click on the map to place
+            Click to place
             {{ interaction.selectedBuilding.value.replace(/_/g, ' ') }}
+            — right-click or Esc to exit
           </template>
           <template #actions>
             <UButton

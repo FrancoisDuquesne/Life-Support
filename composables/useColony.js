@@ -37,7 +37,6 @@ export function useColony() {
     minerals: 0,
     oxygen: 0,
     research: 0,
-    waste: 0,
   }
 
   const state = ref(null)

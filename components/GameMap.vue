@@ -161,9 +161,7 @@ const SINGLE_TILE_ROTATIONS = {
   HABITAT: Math.PI / 6,
 }
 
-const MULTI_TILE_OFFSETS = {
-  RECYCLING_CENTER: Math.PI / 6,
-}
+const MULTI_TILE_OFFSETS = {}
 
 function normalizeAngle(angle) {
   let a = angle
@@ -209,19 +207,6 @@ function getBuildingRotation(type, cells, anchor, z, ox, oy) {
   const raw = 0.5 * Math.atan2(2 * xy, xx - yy)
   const snap = Math.PI / 6
   const base = Math.round(raw / snap) * snap + (MULTI_TILE_OFFSETS[type] || 0)
-
-  // PCA gives an undirected axis (theta == theta + pi). Use anchor to choose a stable facing.
-  if (type === 'RECYCLING_CENTER' && anchor) {
-    const anchorX = hexScreenX(anchor.x, z, ox)
-    const anchorY = hexScreenY(anchor.x, anchor.y, z, oy)
-    const desiredTopDir = Math.atan2(anchorY - meanY, anchorX - meanX)
-    const topA = base - Math.PI / 2
-    const topB = topA + Math.PI
-    return angleDistance(topA, desiredTopDir) <=
-      angleDistance(topB, desiredTopDir)
-      ? base
-      : base + Math.PI
-  }
 
   return base
 }
@@ -822,9 +807,22 @@ function render() {
       )
       if (visibleCells.length === 0) return
       let drewTileCenteredFootprint = false
+      // Compute construction progress for animation
+      const tickCount = props.state.tickCount || 0
+      let constructionAlpha = 1
+      let constructionScale = 1
+      let constructionProgress = 1
+      if (b.isUnderConstruction) {
+        const bt = b.buildTime || 2
+        const remaining = (b.constructionDoneTick || 0) - tickCount
+        constructionProgress = Math.max(0, Math.min(1, 1 - remaining / bt))
+        constructionAlpha = 0.25 + 0.75 * constructionProgress
+        constructionScale = 0.6 + 0.4 * constructionProgress
+      }
+
       if (cells.length > 1) {
         drawBuildingFootprint(ctx, visibleCells, z, ox, oy, hexS, b.type)
-        if (b.type === 'RECYCLING_CENTER' || b.type === 'MINE') {
+        if (b.type === 'MINE') {
           drewTileCenteredFootprint = drawFootprintBuilding(
             ctx,
             b.type,
@@ -833,12 +831,13 @@ function render() {
             ox,
             oy,
             hexS,
-            1,
+            constructionAlpha,
             b.level || 1,
           )
         }
       }
       const metrics = getFootprintRenderMetrics(cells, z, ox, oy, hexS)
+      const scaledIconSize = metrics.iconSize * constructionScale
       if (!drewTileCenteredFootprint) {
         const rotation = getBuildingRotation(
           b.type,
@@ -851,10 +850,10 @@ function render() {
         drawBuilding(
           ctx,
           b.type,
-          metrics.cx - metrics.iconSize / 2,
-          metrics.cy - metrics.iconSize / 2,
-          metrics.iconSize,
-          1,
+          metrics.cx - scaledIconSize / 2,
+          metrics.cy - scaledIconSize / 2,
+          scaledIconSize,
+          constructionAlpha,
           rotation,
           b.level || 1,
         )
@@ -863,7 +862,10 @@ function render() {
         ctx.save()
         const badgeX = metrics.cx + hexS * 0.42
         const badgeY = metrics.cy - hexS * 0.4
-        ctx.fillStyle = (b.level || 1) >= 4 ? 'rgba(202, 138, 4, 0.92)' : 'rgba(14, 116, 144, 0.92)'
+        ctx.fillStyle =
+          (b.level || 1) >= 4
+            ? 'rgba(202, 138, 4, 0.92)'
+            : 'rgba(14, 116, 144, 0.92)'
         ctx.beginPath()
         ctx.arc(badgeX, badgeY, Math.max(6, hexS * 0.22), 0, Math.PI * 2)
         ctx.fill()
@@ -876,11 +878,44 @@ function render() {
       }
       if (b.isUnderConstruction) {
         ctx.save()
+        // Dashed hex outline
         ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)'
         ctx.lineWidth = Math.max(1.5, hexS * 0.1)
         ctx.setLineDash([Math.max(4, hexS * 0.2), Math.max(3, hexS * 0.15)])
         hexPath(ctx, metrics.cx, metrics.cy, hexS * 0.8)
         ctx.stroke()
+        ctx.setLineDash([])
+
+        // Progress arc
+        const arcR = hexS * 0.85
+        const startAngle = -Math.PI / 2
+        const endAngle = startAngle + constructionProgress * Math.PI * 2
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)'
+        ctx.lineWidth = Math.max(2.5, hexS * 0.14)
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.arc(metrics.cx, metrics.cy, arcR, startAngle, endAngle)
+        ctx.stroke()
+
+        // Scaffolding grid overlay (fading as construction completes)
+        const scaffoldAlpha = 0.15 * (1 - constructionProgress)
+        if (scaffoldAlpha > 0.01) {
+          ctx.strokeStyle = `rgba(251, 191, 36, ${scaffoldAlpha})`
+          ctx.lineWidth = Math.max(0.5, hexS * 0.03)
+          const gridStep = hexS * 0.35
+          for (let gx = -hexS; gx <= hexS; gx += gridStep) {
+            ctx.beginPath()
+            ctx.moveTo(metrics.cx + gx, metrics.cy - hexS)
+            ctx.lineTo(metrics.cx + gx, metrics.cy + hexS)
+            ctx.stroke()
+          }
+          for (let gy = -hexS; gy <= hexS; gy += gridStep) {
+            ctx.beginPath()
+            ctx.moveTo(metrics.cx - hexS, metrics.cy + gy)
+            ctx.lineTo(metrics.cx + hexS, metrics.cy + gy)
+            ctx.stroke()
+          }
+        }
         ctx.restore()
       }
     })
@@ -940,7 +975,9 @@ function render() {
       ctx.strokeStyle = isSelected
         ? 'rgba(255, 255, 255, 0.95)'
         : 'rgba(15, 23, 42, 0.95)'
-      ctx.lineWidth = isSelected ? Math.max(1.8, z * 1.5) : Math.max(1.3, z * 1.25)
+      ctx.lineWidth = isSelected
+        ? Math.max(1.8, z * 1.5)
+        : Math.max(1.3, z * 1.25)
       ctx.beginPath()
       ctx.arc(cx, cy - hexS * 0.28, badgeR, 0, Math.PI * 2)
       ctx.fill()
@@ -1141,7 +1178,7 @@ function render() {
       }
       const metrics = getFootprintRenderMetrics(footprint, z, ox, oy, hexS)
       const drewTileCenteredFootprint =
-        (sel === 'RECYCLING_CENTER' || sel === 'MINE') &&
+        sel === 'MINE' &&
         footprint.length > 1 &&
         visibleFootprint.length > 0 &&
         drawFootprintBuilding(
@@ -1254,9 +1291,7 @@ const canvasCursor = computed(() => {
 
   // Check if there's a colonist at this tile
   const units = (props.state && props.state.colonistUnits) || []
-  const hasColonist = units.some(
-    (u) => u.x === hover.gx && u.y === hover.gy,
-  )
+  const hasColonist = units.some((u) => u.x === hover.gx && u.y === hover.gy)
   if (hasColonist) return 'pointer'
 
   // If colonist is selected, show move cursor on revealed tiles

@@ -63,37 +63,38 @@ assets/css/main.css       # Tailwind imports, resource color tokens, base styles
 
 ## Game Engine (`utils/gameEngine.js`)
 
-### Building Types (12)
+### Building Types (11)
 
-| Type | Produces | Consumes | Cost (minerals) | Footprint |
-|------|----------|----------|-----------------|-----------|
-| MDV_LANDING_SITE | — | — | — | 7 cells (starter) |
-| PIPELINE | — | — | 2 | 1 cell |
-| SOLAR_PANEL | +5 energy | — | 10 | 1 cell |
-| HYDROPONIC_FARM | +5 food | water, energy | 15 | 1 cell |
-| WATER_EXTRACTOR | +6 water | energy | 12 | 1 cell |
-| MINE | +4 minerals | energy | 12 | 2 cells |
-| HABITAT | +5 pop cap | — | 20 | 2 cells |
-| OXYGEN_GENERATOR | +6 oxygen | water, energy | 15 | 1 cell |
-| RTG | +5 energy | — | 25 | 1 cell |
-| RECYCLING_CENTER | -3 waste/tick | — | 18 | 3 cells |
-| REPAIR_STATION | 5 HP/tick shared | — | 20 | 1 cell |
+| Type             | Produces    | Consumes      | Cost (minerals) | Footprint         |
+| ---------------- | ----------- | ------------- | --------------- | ----------------- |
+| MDV_LANDING_SITE | —           | —             | —               | 7 cells (starter) |
+| PIPELINE         | —           | —             | 2               | 1 cell            |
+| SOLAR_PANEL      | +5 energy   | —             | 10              | 1 cell            |
+| HYDROPONIC_FARM  | +5 food     | water, energy | 15              | 1 cell            |
+| WATER_EXTRACTOR  | +6 water    | energy        | 12              | 1 cell            |
+| MINE             | +4 minerals | energy        | 8               | 2 cells           |
+| HABITAT          | +5 pop cap  | energy        | 25              | 2 cells           |
+| OXYGEN_GENERATOR | +6 oxygen   | water, energy | 15              | 1 cell            |
+| RTG              | +5 energy   | —             | 20              | 1 cell            |
+| RESEARCH_LAB     | +3 research | energy, water | 30              | 1 cell            |
+| DEFENSE_TURRET   | —           | energy        | 30              | 1 cell            |
+| RADAR_STATION    | —           | energy        | 20              | 1 cell            |
 
-- Buildings can upgrade to level 3 (cost: 12M × level, 5E × level)
-- HP degrades 0.25/tick; repair stations distribute a shared pool
-- Build requires adjacency to existing colony (MDV adjacency enforced)
+- Buildings can upgrade to level 5 (cost: 12M × level, 5E × level) with branching upgrade trees at levels 2 and 4
+- Build requires adjacency to pipeline or MDV
 - `getBuildableCells()` returns cells within 5 hexes of colony core
+- Buildings under construction show animated progress (opacity + scale + arc)
 
-### Resources (5 + waste)
+### Resources (6)
 
-| Resource | Start | Notes |
-|----------|-------|-------|
-| energy | 100 | Solar affected by dust storms; RTG immune |
-| food | 50 | Consumed by population (0.5 per colonist) |
-| water | 50 | Consumed by farms, O2 gens, colonists (0.33 each) |
-| minerals | 30 | Spent on building costs |
-| oxygen | 80 | Consumed 1.0 per colonist |
-| waste | 0 / 50 cap | +0.3/building/tick, +0.2/colonist/tick; overflow → -25% production |
+| Resource | Start | Notes                                             |
+| -------- | ----- | ------------------------------------------------- |
+| energy   | 100   | Solar affected by dust storms; RTG immune         |
+| food     | 50    | Consumed by population (0.5 per colonist)         |
+| water    | 50    | Consumed by farms, O2 gens, colonists (0.33 each) |
+| minerals | 30    | Spent on building costs                           |
+| oxygen   | 80    | Consumed 1.0 per colonist                         |
+| research | 0     | Produced by Research Labs                         |
 
 ### Key Functions
 
@@ -112,8 +113,8 @@ getBuildableCells(state)            → Valid placement cells
 
 ### Tick Loop
 
-- **Interval**: 1 second (1000ms) in `useColony.js`
-- **Order**: cleanup expired events → meteor strikes → HP degradation → repair → remove dead buildings → colonist health/morale → resource production/consumption → population growth → colonist exploration (reveal adjacent tiles)
+- **Interval**: configurable (default 2500ms) in `useColony.js`
+- **Order**: cleanup expired events → meteor strikes → construction completion → colonist health/morale → resource production/consumption → population growth → colonist exploration (reveal adjacent tiles)
 - **Auto-save**: after every tick and build action
 
 ## Terrain System (`utils/terrain.js`)
@@ -125,13 +126,13 @@ getBuildableCells(state)            → Valid placement cells
 
 ## Events (`utils/eventEngine.js`)
 
-| Event | Effect | Duration | Probability |
-|-------|--------|----------|-------------|
-| DUST_STORM | -50% solar | 5 ticks | 0.015 |
-| METEOR_STRIKE | Destroys random building | instant | 0.008 |
-| SOLAR_FLARE | +30% energy, blocks pop growth | 3 ticks | 0.01 |
-| EQUIPMENT_FAILURE | Disables random building | 3 ticks | 0.015 |
-| RESOURCE_DISCOVERY | Reveals 5-8 frontier tiles | instant | 0.02 |
+| Event              | Effect                         | Duration | Probability |
+| ------------------ | ------------------------------ | -------- | ----------- |
+| DUST_STORM         | -50% solar                     | 5 ticks  | 0.015       |
+| METEOR_STRIKE      | Destroys random building       | instant  | 0.008       |
+| SOLAR_FLARE        | +30% energy, blocks pop growth | 3 ticks  | 0.01        |
+| EQUIPMENT_FAILURE  | Disables random building       | 3 ticks  | 0.015       |
+| RESOURCE_DISCOVERY | Reveals 5-8 frontier tiles     | instant  | 0.02        |
 
 Max 2 simultaneous active events. Seeded PRNG for determinism.
 
@@ -147,7 +148,7 @@ Max 2 simultaneous active events. Seeded PRNG for determinism.
 
 - **Key**: `life-support-save` in localStorage
 - **Format**: `{ v: 4, state: {...}, revealedTiles: ["x,y", ...] }`
-- **Migrations**: v1→v2 (add terrain/events) → v3 (add oxygen/waste/HP) → v4 (population→colonist array)
+- **Migrations**: v1→v2 (add terrain/events) → v3 (add oxygen/HP) → v4 (population→colonist array) → v5 (research/upgrades/missions/defense) → v6 (remove HP/repair) → v7 (remove waste/recycling)
 - `occupiedCells` Set is rebuilt from `placedBuildings` on load
 - Milestones stored separately in `life-support-milestones`
 - Dev mode toggle in `life-support-dev-preset-enabled`
@@ -163,17 +164,20 @@ Max 2 simultaneous active events. Seeded PRNG for determinism.
 ## Canvas Rendering (`utils/drawing.js` + `GameMap.vue`)
 
 ### Critical Rules
+
 - **DPR scaling**: `ctx.scale(dpr, dpr)` is set once in the render loop. All coordinates are in CSS pixels. Do NOT multiply input coords by `devicePixelRatio`.
 - **Hex origin offset**: Subtract `(HEX_W/2, HEX_H/2)` before axial conversion in `screenToGrid()`.
 - **GameMap.vue is 100% canvas** — never add NuxtUI/HTML elements inside it.
 - **Frustum culling**: Only visible tiles are rendered based on camera offset/zoom.
 
 ### Shared Drawing
+
 `drawBuilding(ctx, type, x, y, size, alpha, rotation)` — renders a single building icon. Used by both `GameMap` (on-map) and `BuildPanel`/`RadialBuildMenu` (thumbnails). Keep signature compatible.
 
-`drawFootprintBuilding(ctx, type, cells, z, ox, oy, hexS, alpha)` — multi-cell buildings (MINE, HABITAT, RECYCLING_CENTER, MDV).
+`drawFootprintBuilding(ctx, type, cells, z, ox, oy, hexS, alpha)` — multi-cell buildings (MINE, HABITAT, MDV).
 
 ### Hex Geometry (from `constants.js`)
+
 ```
 HEX_SIZE = 18        # Center to vertex (flat-top)
 HEX_W = 36           # Full width
@@ -184,19 +188,24 @@ Grid = 64×64 cells    # Odd-q offset coordinates
 ```
 
 ### Caching
+
 Tile colors, rocks, and noise are cached at module level. Call `clearDrawingCaches()` on game reset.
 
 ## Composables
 
 ### `useColony.js` — Main state manager
+
 **Exports**: `state`, `eventLog`, `resourceHistory`, `revealedTiles`, `terrainMap`, `resourceDeltas`, `buildingsInfo`, `gridWidth`, `gridHeight`, `isAlive`, `canAfford()`, `selectedBuildingInfo`, `newGame()`, `tick()`, `buildAtGrid()`, `demolish()`, `togglePause()`, `reset()`, `saveToFile()`, `loadFromFile()`
 
 ### `useCamera.js` — Viewport
+
 **Exports**: `offsetX`, `offsetY`, `zoom`, `pan()`, `zoomAt()`, `centerOn()`, `screenToGrid()`, `gridToScreen()`, hex constants
 **Zoom range**: 0.5–2.0×
 
 ### `useGridInteraction.js` — Input
+
 **Exports**: `hoverTile`, `selectedBuilding`, `selectBuilding()`, `clearSelection()`, input handlers
+
 - Desktop: mouse events + wheel zoom + right-click (radial menu)
 - Mobile: touch events + pinch zoom + long-press (radial menu, 500ms threshold)
 - Drag threshold: 10px
@@ -220,6 +229,7 @@ Tile colors, rocks, and noise are cached at module level. Call `clearDrawingCach
 ## Styling
 
 ### CSS Custom Properties (`assets/css/main.css`)
+
 ```
 --energy    → amber-600
 --food      → green-600
@@ -227,12 +237,15 @@ Tile colors, rocks, and noise are cached at module level. Call `clearDrawingCach
 --minerals  → orange-600
 --oxygen    → sky-500
 ```
+
 Also registered as NuxtUI theme colors: `resource-energy`, `resource-food`, `resource-water`, `resource-minerals`, `resource-oxygen`.
 
 ### Colorblind Mode
+
 `.colorblind` class on root element swaps to deuteranopia-safe palette.
 
 ### Fonts
+
 - Headings: `font-family: 'Orbitron'` with text-shadow glow
 - Body: `font-family: 'Rajdhani'`
 
@@ -243,5 +256,5 @@ Also registered as NuxtUI theme colors: `resource-energy`, `resource-food`, `res
 - **`revealedTiles`** is a `Set<string>` of `"x,y"` keys. All rendering skips unrevealed tiles.
 - **Resource history** capped at 60 entries; sparklines show last 20.
 - **Events use mouse\*/touch\*** (not pointer\*) because pinch-zoom needs `e.touches`.
-- **Resource deltas** are computed from building metadata × counts, accounting for terrain bonuses, HP, level, events, roles, waste penalty — without mutating state.
+- **Resource deltas** are computed from building metadata × counts, accounting for terrain bonuses, level, events, roles — without mutating state.
 - **`occupiedCells`** is a `Set<string>` rebuilt from `placedBuildings` on load; kept in sync on build/demolish.

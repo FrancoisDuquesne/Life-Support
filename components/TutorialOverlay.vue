@@ -8,7 +8,7 @@ const emit = defineEmits(['skip', 'next'])
 const steps = [
   {
     title: 'Welcome to Life Support',
-    body: 'Your colony has just landed on Mars. Let\'s walk through the basics of keeping your colonists alive.',
+    body: "Your colony has just landed on Mars. Let's walk through the basics of keeping your colonists alive.",
     action: 'Get Started',
   },
   {
@@ -33,7 +33,7 @@ const steps = [
   },
   {
     title: 'Tutorial Complete!',
-    body: 'Great job! You\'ve built the essentials. Keep an eye on your resources and expand when ready.',
+    body: "Great job! You've built the essentials. Keep an eye on your resources and expand when ready.",
     action: 'Start Playing',
   },
 ]
@@ -44,7 +44,9 @@ const showCounter = computed(() => props.step >= 1 && props.step <= 4)
 </script>
 
 <template>
-  <div class="pointer-events-none fixed inset-x-0 top-14 z-50 flex justify-center px-4">
+  <div
+    class="pointer-events-none fixed inset-x-0 top-14 z-50 flex justify-center px-4"
+  >
     <UCard
       class="pointer-events-auto w-full max-w-sm shadow-xl"
       :ui="{ body: 'p-3 sm:p-4' }"
@@ -52,7 +54,7 @@ const showCounter = computed(() => props.step >= 1 && props.step <= 4)
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <h3 class="text-highlighted text-sm font-bold leading-tight">
+            <h3 class="text-highlighted text-sm leading-tight font-bold">
               {{ current.title }}
             </h3>
             <UBadge
@@ -63,7 +65,10 @@ const showCounter = computed(() => props.step >= 1 && props.step <= 4)
               :label="`${step}/${totalSteps}`"
             />
           </div>
-          <p class="text-muted mt-1 text-xs leading-relaxed" v-html="formatBody(current.body)" />
+          <p
+            class="text-muted mt-1 text-xs leading-relaxed"
+            v-html="formatBody(current.body)"
+          />
         </div>
         <UButton
           v-if="step < 5"
@@ -88,6 +93,9 @@ const showCounter = computed(() => props.step >= 1 && props.step <= 4)
 
 <script>
 function formatBody(text) {
-  return text.replace(/\*\*(.*?)\*\*/g, '<strong class="text-highlighted">$1</strong>')
+  return text.replace(
+    /\*\*(.*?)\*\*/g,
+    '<strong class="text-highlighted">$1</strong>',
+  )
 }
 </script>

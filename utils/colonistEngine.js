@@ -306,7 +306,6 @@ export function processColonistTick(state) {
   ).length
 
   const overcrowded = pop > (state.populationCapacity || 10)
-  const wasteOverflow = (state.waste || 0) > (state.wasteCapacity || 50)
 
   for (const c of state.colonists) {
     // --- Health ---
@@ -328,9 +327,6 @@ export function processColonistTick(state) {
       c.morale = Math.min(100, c.morale + 0.3) // natural recovery
     }
     if (overcrowded) {
-      c.morale = Math.max(0, c.morale - 1)
-    }
-    if (wasteOverflow) {
       c.morale = Math.max(0, c.morale - 1)
     }
 
@@ -482,7 +478,6 @@ export function checkPopulationGrowth(state, modifiers) {
 
   if (!state.alive) return null
   if (modifiers.blockPopulationGrowth) return null
-  if ((state.waste || 0) > (state.wasteCapacity || 50)) return null
   if ((res.food || 0) <= 20) return null
   if ((res.water || 0) <= 20) return null
   if ((res.oxygen || 0) <= 10) return null

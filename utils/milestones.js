@@ -64,13 +64,6 @@ export const MILESTONES = [
     check: (s) => (s.buildings?.mine || 0) >= 3,
   },
   {
-    id: 'clean_colony',
-    name: 'Clean Colony',
-    description: 'Build a Recycling Center',
-    icon: '🗑️',
-    check: (s) => (s.buildings?.recycling_center || 0) >= 1,
-  },
-  {
     id: 'endurance',
     name: 'Endurance',
     description: 'Survive 500 ticks',

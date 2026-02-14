@@ -4,7 +4,7 @@ import { mulberry32 } from '~/utils/hex'
 import { getFootprintCellsForType } from '~/utils/gameEngine'
 
 const SAVE_KEY = 'life-support-save'
-const SAVE_VERSION = 6
+const SAVE_VERSION = 7
 
 function normalizePlacedBuilding(pb) {
   const fallbackCells = getFootprintCellsForType(pb.type, pb.x, pb.y)
@@ -23,6 +23,7 @@ function normalizePlacedBuilding(pb) {
     level: pb.level || 1,
     isUnderConstruction: !!pb.isUnderConstruction,
     constructionDoneTick: pb.constructionDoneTick || 0,
+    buildTime: pb.buildTime || 2,
     upgradeChoices: pb.upgradeChoices || {},
   }
 }
@@ -47,8 +48,6 @@ export function saveGame(state, revealedTiles) {
       terrainSeed: state.terrainSeed,
       activeEvents: state.activeEvents || [],
       nextEventId: state.nextEventId || 1,
-      waste: state.waste || 0,
-      wasteCapacity: state.wasteCapacity || 50,
       lastColonistArrivalTick: state.lastColonistArrivalTick || 0,
       colonistUnits: (state.colonistUnits || []).map((u) => ({
         colonistId: u.colonistId,
@@ -227,6 +226,25 @@ function migrateV5toV6(data) {
 }
 
 /**
+ * Migrate v6 saves to v7 (remove waste system and RECYCLING_CENTER).
+ */
+function migrateV6toV7(data) {
+  const s = data.state
+  delete s.waste
+  delete s.wasteCapacity
+  if (s.placedBuildings) {
+    s.placedBuildings = s.placedBuildings.filter(
+      (pb) => pb.type !== 'RECYCLING_CENTER',
+    )
+  }
+  if (s.buildings) {
+    delete s.buildings.recycling_center
+  }
+  data.v = 7
+  return data
+}
+
+/**
  * Load saved game from localStorage.
  * Returns { state, revealedTiles } or null if no save / incompatible version.
  */
@@ -242,6 +260,7 @@ export function loadGame() {
     if (data.v === 3) data = migrateV3toV4(data)
     if (data.v === 4) data = migrateV4toV5(data)
     if (data.v === 5) data = migrateV5toV6(data)
+    if (data.v === 6) data = migrateV6toV7(data)
 
     if (data.v !== SAVE_VERSION) return null
 
@@ -273,8 +292,6 @@ export function loadGame() {
       terrainSeed: s.terrainSeed,
       activeEvents: s.activeEvents || [],
       nextEventId: s.nextEventId || 1,
-      waste: s.waste || 0,
-      wasteCapacity: s.wasteCapacity || 50,
       lastColonistArrivalTick: s.lastColonistArrivalTick || 0,
       colonistUnits: (s.colonistUnits || []).map((u) => ({
         colonistId: u.colonistId,

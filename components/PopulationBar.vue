@@ -133,11 +133,11 @@ const growthBlockers = computed(() => {
   if (!s || !s.alive) return []
   const blockers = []
   const res = s.resources || {}
-  if ((s.population || 0) >= (s.populationCapacity || 10)) blockers.push('At capacity')
+  if ((s.population || 0) >= (s.populationCapacity || 10))
+    blockers.push('At capacity')
   if ((res.food || 0) <= 20) blockers.push('Food ≤ 20')
   if ((res.water || 0) <= 20) blockers.push('Water ≤ 20')
   if ((res.oxygen || 0) <= 10) blockers.push('Oxygen ≤ 10')
-  if ((s.waste || 0) > (s.wasteCapacity || 50)) blockers.push('Waste overflow')
   if ((s.avgMorale || 100) <= 40) blockers.push('Low morale')
   return blockers
 })
